@@ -3,8 +3,25 @@ import { requireRole } from '@/lib/api-auth';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.pdf']);
+// SVG and PDF are intentionally excluded — SVG can embed JavaScript; PDF can contain
+// active content. Both would be served from a public URL with no auth check.
+const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Magic byte signatures for allowed image types
+const MAGIC_BYTES: { ext: string; bytes: number[] }[] = [
+  { ext: '.jpg',  bytes: [0xff, 0xd8, 0xff] },
+  { ext: '.jpeg', bytes: [0xff, 0xd8, 0xff] },
+  { ext: '.png',  bytes: [0x89, 0x50, 0x4e, 0x47] },
+  { ext: '.gif',  bytes: [0x47, 0x49, 0x46] },
+  { ext: '.webp', bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header
+];
+
+function validateMagicBytes(buffer: Buffer, extension: string): boolean {
+  const sig = MAGIC_BYTES.find((m) => m.ext === extension);
+  if (!sig) return false;
+  return sig.bytes.every((byte, i) => buffer[i] === byte);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +58,14 @@ export async function POST(request: NextRequest) {
     if (!extension || !ALLOWED_EXTENSIONS.has(extension)) {
       return NextResponse.json(
         { error: `File type not allowed. Accepted: ${[...ALLOWED_EXTENSIONS].join(', ')}` },
+        { status: 400 },
+      );
+    }
+
+    // Validate magic bytes — reject files where content doesn't match extension
+    if (!validateMagicBytes(buffer, extension)) {
+      return NextResponse.json(
+        { error: 'File content does not match the declared file type' },
         { status: 400 },
       );
     }

@@ -58,7 +58,7 @@ export async function PATCH(
     if (name !== undefined) data.name = name;
     if (phone !== undefined) data.phone = phone || null;
     if (photo !== undefined) data.photo = photo || null;
-    if (role !== undefined && ['ADMIN', 'OFFICER', 'VIEWER'].includes(role)) {
+    if (role !== undefined && ['ADMIN', 'OFFICER', 'AGENT', 'VIEWER'].includes(role)) {
       data.role = role;
     }
 

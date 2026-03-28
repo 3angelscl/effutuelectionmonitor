@@ -157,6 +157,13 @@ export const POST = apiHandler(async (request: Request) => {
     },
   });
 
+  // Resolve the recipient's role to build the correct chat link
+  const recipient = await prisma.user.findUnique({
+    where: { id: data.receiverId },
+    select: { role: true },
+  });
+  const chatLink = recipient?.role === 'AGENT' ? '/agent/chat' : '/admin/chat';
+
   // Create notification for receiver
   await prisma.notification.create({
     data: {
@@ -164,7 +171,7 @@ export const POST = apiHandler(async (request: Request) => {
       type: 'CHAT',
       title: `New message from ${currentUser.name}`,
       message: data.message.slice(0, 100),
-      link: '/admin/chat',
+      link: chatLink,
     },
   });
 

@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { broadcastEvent } from '@/lib/events';
+import { parseBody, turnoutMarkSchema, ValidationError } from '@/lib/validations';
 
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRole(['ADMIN', 'AGENT']);
 
-    const body = await request.json();
-    const { voterId, hasVoted, stationId } = body;
-
-    if (!voterId || typeof hasVoted !== 'boolean') {
-      return NextResponse.json({ error: 'voterId and hasVoted are required' }, { status: 400 });
+    let body: { voterId: string; hasVoted: boolean; stationId?: string; notes?: string };
+    try {
+      body = await parseBody(request, turnoutMarkSchema);
+    } catch (err) {
+      if (err instanceof ValidationError) return err.toResponse();
+      throw err;
     }
+
+    const { voterId, hasVoted, stationId } = body;
 
     // Get active election
     const activeElection = await prisma.election.findFirst({ where: { isActive: true } });
@@ -84,7 +88,8 @@ export async function PATCH(request: NextRequest) {
     if (shouldSnapshot) {
       const [votedCount, registeredCount] = await Promise.all([
         prisma.voterTurnout.count({ where: { electionId: activeElection.id, hasVoted: true } }),
-        prisma.voter.count(),
+        // Exclude soft-deleted voters so snapshot counts are accurate
+        prisma.voter.count({ where: { deletedAt: null } }),
       ]);
       await prisma.turnoutSnapshot.create({
         data: { electionId: activeElection.id, totalVoted: votedCount, totalRegistered: registeredCount },

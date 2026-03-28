@@ -28,16 +28,19 @@ export async function GET() {
       return NextResponse.json({ enabled: true });
     }
 
-    // Generate secret
-    const secret = generateSecret();
+    // Reuse an existing pending secret so that refreshing the page does not
+    // invalidate a QR code the user has already scanned but not yet verified.
+    const secret = user.twoFactorSecret ?? generateSecret();
+
+    if (!user.twoFactorSecret) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { twoFactorSecret: secret },
+      });
+    }
+
     const otpAuthUrl = generateURI({ label: user.email, issuer: 'Effutu Election Monitor', secret });
     const qrCode = await QRCode.toDataURL(otpAuthUrl);
-
-    // Store secret temporarily (not enabled yet)
-    await prisma.user.update({
-      where: { id: userId },
-      data: { twoFactorSecret: secret },
-    });
 
     return NextResponse.json({ secret, qrCode, enabled: false });
   } catch (error) {

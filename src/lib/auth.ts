@@ -83,7 +83,31 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = (user as unknown as { role: string }).role;
         token.photo = (user as unknown as { photo: string | null }).photo;
+        // Store sessionVersion at sign-in so we can detect forced invalidations
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { sessionVersion: true },
+        });
+        token.sessionVersion = dbUser?.sessionVersion ?? 1;
       }
+
+      // On every token refresh, verify the session hasn't been force-invalidated
+      // (e.g. password change, soft-delete, or admin bump of sessionVersion)
+      if (!user && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { sessionVersion: true, deletedAt: true },
+        });
+        // Invalidate if: user soft-deleted or sessionVersion bumped since sign-in
+        if (
+          !dbUser ||
+          dbUser.deletedAt !== null ||
+          (dbUser.sessionVersion ?? 1) !== (token.sessionVersion as number)
+        ) {
+          return {}; // Empty token forces sign-out on next request
+        }
+      }
+
       // Allow session updates to propagate photo/name changes immediately
       if (trigger === 'update' && session) {
         if (session.photo !== undefined) token.photo = session.photo;

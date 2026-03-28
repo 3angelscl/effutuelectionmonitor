@@ -14,28 +14,29 @@ export async function GET(
     // Get active election
     const activeElection = await prisma.election.findFirst({ where: { isActive: true } });
 
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10')));
+    const voterSearch = searchParams.get('search') || '';
+
+    // Build search filter for database-level filtering
+    const searchFilter = voterSearch
+      ? {
+          OR: [
+            { voterId: { contains: voterSearch } },
+            { firstName: { contains: voterSearch } },
+            { lastName: { contains: voterSearch } },
+          ],
+        }
+      : {};
+
+    // Fetch station info without loading all voters into memory
     const station = await prisma.pollingStation.findUnique({
       where: { id },
       include: {
         agent: { select: { id: true, name: true, email: true, phone: true, photo: true } },
-        voters: {
-          select: {
-            id: true,
-            voterId: true,
-            firstName: true,
-            lastName: true,
-            age: true,
-            photo: true,
-            turnout: activeElection
-              ? { where: { electionId: activeElection.id }, select: { hasVoted: true, votedAt: true } }
-              : undefined,
-          },
-        },
         results: activeElection
-          ? {
-              where: { electionId: activeElection.id },
-              include: { candidate: true },
-            }
+          ? { where: { electionId: activeElection.id }, include: { candidate: true } }
           : { include: { candidate: true } },
       },
     });
@@ -44,26 +45,32 @@ export async function GET(
       return NextResponse.json({ error: 'Station not found' }, { status: 404 });
     }
 
-    // Paginate voters
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const voterSearch = searchParams.get('search') || '';
-
-    let filteredVoters = station.voters;
-    if (voterSearch) {
-      const q = voterSearch.toLowerCase();
-      filteredVoters = filteredVoters.filter(
-        (v) =>
-          v.voterId.toLowerCase().includes(q) ||
-          v.firstName.toLowerCase().includes(q) ||
-          v.lastName.toLowerCase().includes(q)
-      );
-    }
-
-    const totalVoters = filteredVoters.length;
-    const totalVoted = station.voters.filter((v) => v.turnout?.some((t) => t.hasVoted)).length;
-    const paginatedVoters = filteredVoters.slice((page - 1) * limit, page * limit);
+    // Database-level pagination — never loads more than `limit` rows
+    const voterWhere = { stationId: id, deletedAt: null, ...searchFilter };
+    const [paginatedVoters, totalVoters, totalVoted] = await Promise.all([
+      prisma.voter.findMany({
+        where: voterWhere,
+        select: {
+          id: true,
+          voterId: true,
+          firstName: true,
+          lastName: true,
+          age: true,
+          photo: true,
+          turnout: activeElection
+            ? { where: { electionId: activeElection.id }, select: { hasVoted: true, votedAt: true } }
+            : undefined,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { lastName: 'asc' },
+      }),
+      prisma.voter.count({ where: voterWhere }),
+      // Count voters who have voted (for aggregate stats only — not paginated)
+      activeElection
+        ? prisma.voterTurnout.count({ where: { electionId: activeElection.id, hasVoted: true, voter: { stationId: id, deletedAt: null } } })
+        : Promise.resolve(0),
+    ]);
 
     const totalResults = station.results.reduce((sum, r) => sum + r.votes, 0);
 
@@ -96,10 +103,10 @@ export async function GET(
       },
       agent: station.agent,
       stats: {
-        totalRegistered: station.voters.length,
+        totalRegistered: totalVoters,
         totalVoted,
-        turnoutPercentage: station.voters.length > 0
-          ? Math.round((totalVoted / station.voters.length) * 1000) / 10
+        turnoutPercentage: totalVoters > 0
+          ? Math.round((totalVoted / totalVoters) * 1000) / 10
           : 0,
         lastActivity,
         resultsStatus,

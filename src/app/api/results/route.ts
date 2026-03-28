@@ -62,17 +62,6 @@ export const POST = apiHandler(async (request: Request) => {
     throw new ApiError(400, 'No active election');
   }
 
-  // Result locking: atomically check if existing results are FINAL
-  const lockedCount = await prisma.electionResult.count({
-    where: { stationId, electionId: activeElection.id, resultType: 'FINAL' },
-  });
-
-  if (lockedCount > 0) {
-    if (user.role !== 'ADMIN' || !adminOverride) {
-      throw new ApiError(403, 'Results are locked (FINAL). Only an admin can override with explicit confirmation.');
-    }
-  }
-
   // Determine approval status based on resultType and user role
   const isPrivilegedUser = user.role === 'ADMIN' || user.role === 'OFFICER';
   const isFinalByPrivileged = resultType === 'FINAL' && isPrivilegedUser;
@@ -81,10 +70,22 @@ export const POST = apiHandler(async (request: Request) => {
     ? { approvedById: user.id, approvedAt: new Date() }
     : { approvedById: null, approvedAt: null };
 
-  // Upsert each result in a transaction
-  await prisma.$transaction(
-    results.map((r: { candidateId: string; votes: number }) =>
-      prisma.electionResult.upsert({
+  // Lock check + upserts in one interactive transaction to prevent race conditions.
+  // Two concurrent FINAL submissions for the same station will serialize here —
+  // only the first to acquire the lock will proceed; the second sees lockedCount > 0.
+  await prisma.$transaction(async (tx) => {
+    const lockedCount = await tx.electionResult.count({
+      where: { stationId, electionId: activeElection.id, resultType: 'FINAL' },
+    });
+
+    if (lockedCount > 0) {
+      if (user.role !== 'ADMIN' || !adminOverride) {
+        throw new ApiError(403, 'Results are locked (FINAL). Only an admin can override with explicit confirmation.');
+      }
+    }
+
+    for (const r of results as { candidateId: string; votes: number }[]) {
+      await tx.electionResult.upsert({
         where: {
           stationId_candidateId_electionId: {
             stationId,
@@ -109,9 +110,9 @@ export const POST = apiHandler(async (request: Request) => {
           approvalStatus,
           ...approvalFields,
         },
-      })
-    )
-  );
+      });
+    }
+  });
 
   await logAudit({
     userId: user.id,

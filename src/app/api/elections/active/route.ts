@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { logAudit } from '@/lib/audit';
 
 // GET the currently active election
 export async function GET() {
@@ -21,22 +22,38 @@ export async function GET() {
 // POST to set a specific election as active (deactivates all others)
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(['ADMIN', 'OFFICER']);
+    const { user } = await requireRole(['ADMIN', 'OFFICER']);
 
     const { electionId } = await request.json();
     if (!electionId) {
       return NextResponse.json({ error: 'Election ID required' }, { status: 400 });
     }
 
-    // Deactivate all elections
-    await prisma.election.updateMany({
-      data: { isActive: false },
+    // Record the previously active election before changing it
+    const previousActive = await prisma.election.findFirst({
+      where: { isActive: true },
+      select: { id: true, name: true },
     });
 
-    // Activate the selected one
-    const election = await prisma.election.update({
-      where: { id: electionId },
-      data: { isActive: true, status: 'ONGOING' },
+    // Deactivate all elections then activate the selected one atomically
+    const election = await prisma.$transaction(async (tx) => {
+      await tx.election.updateMany({ data: { isActive: false } });
+      return tx.election.update({
+        where: { id: electionId },
+        data: { isActive: true, status: 'ONGOING' },
+      });
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: 'UPDATE',
+      entity: 'Election',
+      entityId: electionId,
+      detail: `Activated election "${election.name}"`,
+      metadata: {
+        previousActiveId: previousActive?.id ?? null,
+        previousActiveName: previousActive?.name ?? null,
+      },
     });
 
     return NextResponse.json(election);

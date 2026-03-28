@@ -68,14 +68,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-    if (!validTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'Invalid file type. Only JPG and PNG are allowed.' }, { status: 400 });
-    }
-
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: 'File too large. Maximum 10MB.' }, { status: 400 });
+    }
+
+    // Read buffer first so we can validate magic bytes (not just the client-supplied MIME type)
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Validate magic bytes — rejects files disguised with a fake Content-Type
+    const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isPng  = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+    if (!isJpeg && !isPng) {
+      return NextResponse.json(
+        { error: 'Invalid file. Only JPEG and PNG images are accepted.' },
+        { status: 400 },
+      );
     }
 
     // For agents, determine their station automatically
@@ -104,8 +111,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Polling station not found' }, { status: 404 });
     }
 
-    // Save file
-    const buffer = Buffer.from(await file.arrayBuffer());
+    // Save file (buffer already read above for magic byte validation)
     const rawExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const allowedExts = ['jpg', 'jpeg', 'png'];
     const ext = allowedExts.includes(rawExt) ? rawExt : 'jpg';
