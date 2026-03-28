@@ -95,15 +95,15 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
   const userPhoto = (session?.user as { photo?: string | null })?.photo;
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
+    <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4">
       <div className="flex items-center justify-between">
         <div>
-          {title && <h1 className="text-lg font-semibold text-gray-900">{title}</h1>}
+          {title && <h1 className="text-base md:text-lg font-semibold text-gray-900">{title}</h1>}
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* Search */}
-          <div className="relative">
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* Search — desktop only */}
+          <div className="relative hidden md:block">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
@@ -129,7 +129,7 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
             </button>
 
             {notifOpen && (
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] max-w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
                 <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                   <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
                   {unreadCount > 0 && (

@@ -55,56 +55,56 @@ export default function AgentViewerPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-            <SignalIcon className="h-5 w-5 text-white" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 md:w-10 md:h-10 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
+            <SignalIcon className="h-4 w-4 md:h-5 md:w-5 text-white" />
           </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">
-              {stats.election ? stats.election.name : 'Election'} — Live Feed
+          <div className="min-w-0">
+            <h2 className="text-base md:text-xl font-bold text-gray-900 truncate">
+              {stats.election ? stats.election.name : 'Election'} — Live
             </h2>
-            <p className="text-sm text-gray-500">Real-time voter turnout and results</p>
+            <p className="text-xs text-gray-500 hidden sm:block">Real-time voter turnout and results</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <Badge variant="success" dot>Live</Badge>
-          <span className="text-xs text-gray-400">
-            Last refreshed: {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          <span className="text-xs text-gray-400 hidden sm:block">
+            {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
           </span>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 text-gray-400 hover:text-primary-600 rounded-lg disabled:opacity-50"
           >
             <ArrowPathIcon className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Total Turnout</p>
-          <p className="text-3xl font-bold text-gray-900">{stats.turnoutPercentage}%</p>
-          <p className="text-sm text-gray-500 mt-1">
-            {formatNumber(stats.totalVoted)} / {formatNumber(stats.totalRegisteredVoters)} voters
+      {/* Stat Cards — 3 compact columns on mobile */}
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
+        <Card className="!p-3 md:!p-5">
+          <p className="text-[10px] md:text-xs font-bold text-primary-600 uppercase tracking-wider mb-1">Turnout</p>
+          <p className="text-2xl md:text-3xl font-bold text-gray-900">{stats.turnoutPercentage}%</p>
+          <p className="text-[10px] md:text-sm text-gray-500 mt-1 hidden sm:block">
+            {formatNumber(stats.totalVoted)} / {formatNumber(stats.totalRegisteredVoters)}
           </p>
-          <div className="mt-3"><ProgressBar value={stats.turnoutPercentage} /></div>
+          <div className="mt-2"><ProgressBar value={stats.turnoutPercentage} /></div>
         </Card>
-        <Card>
-          <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Stations Reported</p>
-          <p className="text-3xl font-bold text-gray-900">{stats.stationsReporting} / {stats.totalStations}</p>
-          <p className="text-sm text-gray-500 mt-1">
-            {stats.totalStations > 0 ? ((stats.stationsReporting / stats.totalStations) * 100).toFixed(1) : 0}% completeness
+        <Card className="!p-3 md:!p-5">
+          <p className="text-[10px] md:text-xs font-bold text-primary-600 uppercase tracking-wider mb-1">Stations</p>
+          <p className="text-xl md:text-3xl font-bold text-gray-900">{stats.stationsReporting}<span className="text-base text-gray-400">/{stats.totalStations}</span></p>
+          <p className="text-[10px] md:text-sm text-gray-500 mt-1">
+            {stats.totalStations > 0 ? ((stats.stationsReporting / stats.totalStations) * 100).toFixed(0) : 0}%
           </p>
         </Card>
-        <Card>
-          <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Valid Votes Cast</p>
-          <p className="text-3xl font-bold text-gray-900">{formatNumber(stats.totalVoted)}</p>
-          <p className="text-sm text-gray-500 mt-1">Across {stats.totalStations} polling stations</p>
+        <Card className="!p-3 md:!p-5">
+          <p className="text-[10px] md:text-xs font-bold text-primary-600 uppercase tracking-wider mb-1">Votes</p>
+          <p className="text-xl md:text-3xl font-bold text-gray-900">{formatNumber(stats.totalVoted)}</p>
+          <p className="text-[10px] md:text-sm text-gray-500 mt-1">{stats.totalStations} stations</p>
         </Card>
       </div>
 

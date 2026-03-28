@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { useSession } from 'next-auth/react';
 import Card from '@/components/ui/Card';
-import { PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -84,13 +84,202 @@ export default function AgentChatPage() {
     return parts.length >= 2 ? `${parts[0][0]}${parts[parts.length - 1][0]}` : name.slice(0, 2);
   };
 
-  return (
-    <div className="p-6 h-[calc(100vh-2rem)]">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Messages</h1>
+  const handleSelectConversation = (userId: string) => {
+    setSelectedUserId(userId);
+    setError(null);
+  };
 
-      <div className="flex gap-6 h-[calc(100%-4rem)]">
+  const handleBack = () => {
+    setSelectedUserId(null);
+    setError(null);
+  };
+
+  // Mobile: full-height chat thread when conversation is selected
+  if (selectedUserId && selectedConv) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-8rem)] md:h-auto md:p-6">
+        {/* Mobile: full-screen chat; Desktop: use the two-pane layout below */}
+        <div className="md:hidden flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white shrink-0">
+            <button
+              onClick={handleBack}
+              className="p-1.5 -ml-1 text-gray-500 hover:text-gray-700 rounded-lg"
+            >
+              <ArrowLeftIcon className="h-5 w-5" />
+            </button>
+            <div className="w-9 h-9 bg-primary-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
+              {getInitials(selectedConv.user.name)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm leading-tight">{selectedConv.user.name}</p>
+              <p className="text-xs text-gray-500">{selectedConv.user.role}</p>
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            {messages.map((msg) => {
+              const isMine = msg.senderId === currentUserId;
+              return (
+                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl ${
+                    isMine
+                      ? 'bg-primary-600 text-white rounded-br-sm'
+                      : 'bg-white text-gray-900 rounded-bl-sm shadow-sm'
+                  }`}>
+                    <p className="text-sm">{msg.message}</p>
+                    <p className={`text-[10px] mt-1 ${isMine ? 'text-white/60' : 'text-gray-400'}`}>
+                      {formatTime(msg.createdAt)}
+                      {isMine && (
+                        <span className={`ml-1.5 ${msg.isRead ? 'text-green-400' : 'text-white/40'}`}>
+                          {msg.isRead ? 'Read' : 'Sent'}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="mx-4 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center justify-between shrink-0">
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-2">&times;</button>
+            </div>
+          )}
+
+          {/* Input */}
+          <form onSubmit={handleSend} className="flex gap-2 p-3 border-t border-gray-100 bg-white shrink-0">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              className="flex-1 px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+            />
+            <button
+              type="submit"
+              disabled={sending || !newMessage.trim()}
+              className="px-3 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
+            >
+              <PaperAirplaneIcon className="h-5 w-5" />
+            </button>
+          </form>
+        </div>
+
+        {/* Desktop: two-pane layout */}
+        <div className="hidden md:flex gap-6 h-[calc(100vh-10rem)]">
+          {/* Conversation list */}
+          <Card padding={false} className="w-80 shrink-0 flex flex-col">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-700">Conversations</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {conversations.map((convo) => (
+                <button
+                  key={convo.user.id}
+                  onClick={() => handleSelectConversation(convo.user.id)}
+                  className={`w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 ${
+                    selectedUserId === convo.user.id ? 'bg-primary-50' : ''
+                  }`}
+                >
+                  <div className="w-10 h-10 bg-primary-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {getInitials(convo.user.name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-gray-900 text-sm">{convo.user.name}</p>
+                      {convo.lastMessageAt && new Date(convo.lastMessageAt).getTime() > 0 && (
+                        <span className="text-[10px] text-gray-400">{formatTime(convo.lastMessageAt)}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">{convo.lastMessage || 'No messages yet'}</p>
+                    <span className="text-[10px] text-gray-400 uppercase">{convo.user.role}</span>
+                  </div>
+                  {convo.unreadCount > 0 && (
+                    <span className="w-5 h-5 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {convo.unreadCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {conversations.length === 0 && (
+                <div className="p-8 text-center text-gray-400 text-sm">No conversations yet</div>
+              )}
+            </div>
+          </Card>
+
+          {/* Message thread */}
+          <Card padding={false} className="flex-1 flex flex-col">
+            <div className="p-4 border-b border-gray-100">
+              <p className="font-semibold text-gray-900">{selectedConv.user.name}</p>
+              <p className="text-xs text-gray-500">{selectedConv.user.role}</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map((msg) => {
+                const isMine = msg.senderId === currentUserId;
+                return (
+                  <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl ${
+                      isMine
+                        ? 'bg-primary-600 text-white rounded-br-sm'
+                        : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+                    }`}>
+                      <p className="text-sm">{msg.message}</p>
+                      <p className={`text-[10px] mt-1 ${isMine ? 'text-white/60' : 'text-gray-400'}`}>
+                        {formatTime(msg.createdAt)}
+                        {isMine && (
+                          <span className={`ml-1.5 ${msg.isRead ? 'text-green-500' : 'text-gray-400'}`}>
+                            {msg.isRead ? 'Read' : 'Sent'}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+            {error && (
+              <div className="mx-4 mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center justify-between">
+                <span>{error}</span>
+                <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-2">&times;</button>
+              </div>
+            )}
+            <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex gap-3">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              />
+              <button
+                type="submit"
+                disabled={sending || !newMessage.trim()}
+                className="px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              >
+                <PaperAirplaneIcon className="h-5 w-5" />
+              </button>
+            </form>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Conversation list view (mobile default, or desktop with no selection)
+  return (
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900">Messages</h1>
+
+      <div className="md:flex gap-6 md:h-[calc(100vh-10rem)]">
         {/* Conversation List */}
-        <Card padding={false} className="w-80 shrink-0 flex flex-col">
+        <Card padding={false} className="md:w-80 md:shrink-0 flex flex-col">
           <div className="p-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-700">Conversations</h3>
           </div>
@@ -98,12 +287,10 @@ export default function AgentChatPage() {
             {conversations.map((convo) => (
               <button
                 key={convo.user.id}
-                onClick={() => setSelectedUserId(convo.user.id)}
-                className={`w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 ${
-                  selectedUserId === convo.user.id ? 'bg-primary-50' : ''
-                }`}
+                onClick={() => handleSelectConversation(convo.user.id)}
+                className="w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 active:bg-gray-100"
               >
-                <div className="w-10 h-10 bg-navy-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
+                <div className="w-10 h-10 bg-primary-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
                   {getInitials(convo.user.name)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -129,70 +316,12 @@ export default function AgentChatPage() {
           </div>
         </Card>
 
-        {/* Message Area */}
-        <Card padding={false} className="flex-1 flex flex-col">
-          {selectedUserId && selectedConv ? (
-            <>
-              <div className="p-4 border-b border-gray-100">
-                <p className="font-semibold text-gray-900">{selectedConv.user.name}</p>
-                <p className="text-xs text-gray-500">{selectedConv.user.role}</p>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {messages.map((msg) => {
-                  const isMine = msg.senderId === currentUserId;
-                  return (
-                    <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[70%] px-4 py-2.5 rounded-2xl ${
-                        isMine
-                          ? 'bg-primary-600 text-white rounded-br-sm'
-                          : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-                      }`}>
-                        <p className="text-sm">{msg.message}</p>
-                        <p className={`text-[10px] mt-1 ${isMine ? 'text-white/60' : 'text-gray-400'}`}>
-                          {formatTime(msg.createdAt)}
-                          {isMine && (
-                            <span className={`ml-1.5 ${msg.isRead ? 'text-green-500' : 'text-gray-400'}`}>
-                              {msg.isRead ? 'Read' : 'Sent'}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-              {error && (
-                <div className="mx-4 mt-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center justify-between">
-                  <span>{error}</span>
-                  <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-2">&times;</button>
-                </div>
-              )}
-              <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex gap-3">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                />
-                <button
-                  type="submit"
-                  disabled={sending || !newMessage.trim()}
-                  className="px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
-                >
-                  <PaperAirplaneIcon className="h-5 w-5" />
-                </button>
-              </form>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-400">
-              <div className="text-center">
-                <p className="text-lg font-medium">Select a conversation</p>
-                <p className="text-sm">Choose a contact to start messaging</p>
-              </div>
-            </div>
-          )}
+        {/* Desktop: empty state placeholder */}
+        <Card padding={false} className="hidden md:flex flex-1 items-center justify-center text-gray-400">
+          <div className="text-center">
+            <p className="text-lg font-medium">Select a conversation</p>
+            <p className="text-sm">Choose a contact to start messaging</p>
+          </div>
         </Card>
       </div>
     </div>

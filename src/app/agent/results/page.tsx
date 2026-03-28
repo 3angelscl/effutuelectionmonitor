@@ -196,29 +196,30 @@ export default function ResultsPage() {
         </div>
       )}
 
-      <div className="max-w-2xl space-y-4">
+      <div className="space-y-3">
         {(candidates || []).map((candidate) => (
-          <Card key={candidate.id}>
-            <div className="flex items-center gap-4">
+          <Card key={candidate.id} className="!p-3 md:!p-5">
+            <div className="flex items-center gap-3">
               <div
-                className="w-12 h-12 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
+                className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white text-xs md:text-sm font-bold shrink-0"
                 style={{ backgroundColor: candidate.color }}
               >
-                {candidate.party}
+                {candidate.party.slice(0, 3)}
               </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900">{candidate.name}</h3>
-                <p className="text-xs text-gray-500">{candidate.partyFull || candidate.party}</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 text-sm md:text-base truncate">{candidate.name}</h3>
+                <p className="text-xs text-gray-500 truncate">{candidate.partyFull || candidate.party}</p>
               </div>
-              <div className="w-28 md:w-32">
+              <div className="w-24 md:w-32 shrink-0">
                 <input
                   type="number"
+                  inputMode="numeric"
                   min="0"
                   max={station.totalRegistered}
                   value={votes[candidate.id] || ''}
                   onChange={(e) => handleVoteChange(candidate.id, parseInt(e.target.value) || 0)}
                   placeholder="0"
-                  className="w-full text-right text-lg font-bold px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+                  className="w-full text-right text-base md:text-lg font-bold px-2 md:px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
                 />
               </div>
             </div>
@@ -226,28 +227,24 @@ export default function ResultsPage() {
         ))}
 
         {/* Total */}
-        <Card className="bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">Total Votes</p>
-              <p className="text-xs text-gray-500">
-                Max: {formatNumber(station.totalRegistered)} registered voters
-              </p>
+        <Card className="bg-gray-50 !p-3 md:!p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm md:text-base">Total Votes</p>
+              <p className="text-xs text-gray-500">Max: {formatNumber(station.totalRegistered)}</p>
               {station.totalVoted > 0 && (
-                <p className="text-xs text-blue-600 mt-1">
-                  Recorded turnout: {formatNumber(station.totalVoted)} voted
-                </p>
+                <p className="text-xs text-blue-600 mt-0.5">Turnout recorded: {formatNumber(station.totalVoted)}</p>
               )}
             </div>
-            <div className="text-right">
-              <p className={`text-2xl font-bold ${station.totalVoted > 0 && totalVotes !== station.totalVoted && totalVotes > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+            <div className="text-right shrink-0">
+              <p className={`text-2xl md:text-3xl font-bold ${station.totalVoted > 0 && totalVotes !== station.totalVoted && totalVotes > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
                 {formatNumber(totalVotes)}
               </p>
               {totalVotes > station.totalRegistered && (
-                <Badge variant="danger">Exceeds registered voters</Badge>
+                <Badge variant="danger" size="sm">Exceeds limit</Badge>
               )}
               {station.totalVoted > 0 && totalVotes > 0 && totalVotes !== station.totalVoted && totalVotes <= station.totalRegistered && (
-                <Badge variant="warning">Differs from turnout</Badge>
+                <Badge variant="warning" size="sm">Differs from turnout</Badge>
               )}
             </div>
           </div>

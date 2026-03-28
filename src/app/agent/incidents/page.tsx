@@ -237,17 +237,17 @@ export default function AgentIncidentsPage() {
           </div>
 
           {/* GPS Status */}
-          <div className="flex items-center gap-2 text-sm">
+          <div className="text-sm">
             {gpsStatus === 'loading' && (
               <span className="text-gray-500">Detecting GPS location...</span>
             )}
             {gpsStatus === 'success' && (
               <span className="text-green-600">
-                GPS location detected ({latitude?.toFixed(6)}, {longitude?.toFixed(6)})
+                GPS detected ({latitude?.toFixed(4)}, {longitude?.toFixed(4)})
               </span>
             )}
             {gpsStatus === 'error' && (
-              <span className="text-yellow-600">GPS unavailable - incident will be submitted without location</span>
+              <span className="text-yellow-600">GPS unavailable — will submit without location</span>
             )}
           </div>
 

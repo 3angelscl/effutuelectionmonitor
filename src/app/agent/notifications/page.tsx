@@ -68,9 +68,9 @@ export default function AgentNotificationsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900">Notifications</h1>
         {unreadCount > 0 && (
           <button onClick={markAllRead} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
             Mark all as read

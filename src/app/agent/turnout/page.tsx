@@ -174,15 +174,11 @@ export default function TurnoutPage() {
   const leftCount = totalRegistered - votedCount;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-      {/* Mobile Header */}
-      <div className="md:hidden">
-        <h2 className="text-lg font-bold text-gray-900">Station #{station.psCode}</h2>
-        <p className="text-xs text-gray-500">{station.name}</p>
-      </div>
-      <div className="hidden md:block">
-        <h2 className="text-2xl font-bold text-gray-900">Record Voter Turnout</h2>
-        <p className="text-gray-500 text-sm mt-1">{station.name} ({station.psCode})</p>
+    <div className="p-4 md:p-6 space-y-4 md:space-y-5">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900">Record Voter Turnout</h2>
+        <p className="text-gray-500 text-sm mt-0.5">{station.name} · <span className="font-mono">{station.psCode}</span></p>
       </div>
 
       {/* Turnout Stats */}
@@ -216,24 +212,25 @@ export default function TurnoutPage() {
         <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
         <input
           type="text"
-          placeholder="Search Voter by ID or Name..."
+          inputMode="search"
+          placeholder="Search by ID or Name..."
           value={searchInput}
           onChange={handleSearch}
-          className="pl-11 pr-4 py-3 text-sm bg-white border border-gray-200 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+          className="pl-11 pr-4 py-3 text-sm bg-white border border-gray-200 rounded-xl w-full focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
         />
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {(['all', 'pending', 'voted'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-              tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
+              tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
           >
-            {t === 'all' ? 'All Voters' : t === 'pending' ? 'Pending' : 'Verified'}
+            {t === 'all' ? 'All' : t === 'pending' ? 'Pending' : 'Voted'}
           </button>
         ))}
       </div>
@@ -241,34 +238,31 @@ export default function TurnoutPage() {
       {/* Voter List - Mobile card style */}
       <div className="space-y-2 md:hidden">
         {voters.map((voter) => (
-          <div key={voter.id} className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {voter.photo ? (
-                <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0" />
-              ) : (
-                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-sm font-bold text-gray-600 shrink-0">
-                  {voter.firstName[0]}{voter.lastName[0]}
-                </div>
-              )}
-              <div>
-                <p className="font-semibold text-gray-900 text-sm">{voter.firstName} {voter.lastName}</p>
-                <p className="text-xs text-gray-500">ID: {voter.voterId}</p>
+          <div key={voter.id} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3">
+            {/* Photo / initials */}
+            {voter.photo ? (
+              <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-11 h-11 rounded-full object-cover border border-gray-200 shrink-0" />
+            ) : (
+              <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${voter.hasVoted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                {voter.firstName[0]}{voter.lastName[0]}
               </div>
+            )}
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm leading-tight">{voter.firstName} {voter.lastName}</p>
+              <p className="text-xs text-gray-400 mt-0.5 font-mono">{voter.voterId}</p>
             </div>
+            {/* Action button — large touch target */}
             <button
               onClick={() => handleToggleVoted(voter)}
               disabled={updatingId === voter.voterId}
-              className={`px-4 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+              className={`shrink-0 min-w-[80px] py-2.5 px-3 rounded-xl text-xs font-semibold transition-colors active:scale-95 disabled:opacity-50 ${
                 voter.hasVoted
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-700 hover:bg-green-600 hover:text-white'
+                  ? 'bg-green-100 text-green-700 border border-green-200'
+                  : 'bg-primary-600 text-white active:bg-primary-700'
               }`}
             >
-              {updatingId === voter.voterId
-                ? '...'
-                : voter.hasVoted
-                ? 'Voted'
-                : 'Mark Voted'}
+              {updatingId === voter.voterId ? '...' : voter.hasVoted ? '✓ Voted' : 'Mark Voted'}
             </button>
           </div>
         ))}

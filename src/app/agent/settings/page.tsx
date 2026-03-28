@@ -165,12 +165,12 @@ export default function AgentSettingsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900">Settings</h1>
 
       <div className="max-w-3xl">
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-6">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full md:w-fit mb-6">
           {tabs.map((tab) => (
             <button
               key={tab.key}
