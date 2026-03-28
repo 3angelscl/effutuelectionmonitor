@@ -238,9 +238,9 @@ export default function AdminViewerPage() {
           </Card>
           <Card>
             <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Valid Votes Cast</p>
-            <p className="text-3xl font-bold text-gray-900">{formatNumber(stats.totalVoted)}</p>
+            <p className="text-3xl font-bold text-gray-900">{formatNumber(stats.totalValidVotes)}</p>
             <p className="text-sm text-gray-500 mt-1">
-              Across {stats.totalStations} polling stations
+              Across {stats.stationsCompleted} reporting station{stats.stationsCompleted !== 1 ? 's' : ''}
             </p>
           </Card>
         </div>
@@ -250,10 +250,10 @@ export default function AdminViewerPage() {
           <>
             {/* Candidate Comparison Stack Chart */}
             <Card>
-              <CandidateComparisonStack 
+              <CandidateComparisonStack
                 candidate1={stats.favCandidate1}
                 candidate2={stats.favCandidate2}
-                totalVotes={stats.totalVoted}
+                totalVotes={stats.totalValidVotes}
               />
             </Card>
 

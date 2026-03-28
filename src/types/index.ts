@@ -53,6 +53,7 @@ export interface Discrepancy {
 export interface DashboardStats {
   totalRegisteredVoters: number;
   totalVoted: number;
+  totalValidVotes: number;
   turnoutPercentage: number;
   totalStations: number;
   stationsReporting: number;

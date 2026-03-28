@@ -136,6 +136,9 @@ export async function GET(request: NextRequest) {
       });
     });
 
+    // Total valid votes = sum of all votes from submitted election results
+    const totalValidVotes = Array.from(voteTotalsMap.values()).reduce((sum, v) => sum + v, 0);
+
     const candidateResults = candidates.map((candidate) => {
       const totalVotes = voteTotalsMap.get(candidate.id) || 0;
       return {
@@ -145,7 +148,7 @@ export async function GET(request: NextRequest) {
         partyFull: candidate.partyFull,
         color: candidate.color || '#3B82F6',
         totalVotes,
-        percentage: totalVoted > 0 ? Math.round((totalVotes / totalVoted) * 1000) / 10 : 0,
+        percentage: totalValidVotes > 0 ? Math.round((totalVotes / totalValidVotes) * 1000) / 10 : 0,
       };
     });
 
@@ -227,6 +230,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       totalRegisteredVoters: totalRegistered,
       totalVoted,
+      totalValidVotes,
       turnoutPercentage: totalRegistered > 0 ? Math.round((totalVoted / totalRegistered) * 1000) / 10 : 0,
       totalStations: stations.length,
       stationsReporting,

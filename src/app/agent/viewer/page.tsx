@@ -103,8 +103,8 @@ export default function AgentViewerPage() {
         </Card>
         <Card className="!p-3 md:!p-5">
           <p className="text-[10px] md:text-xs font-bold text-primary-600 uppercase tracking-wider mb-1">Votes</p>
-          <p className="text-xl md:text-3xl font-bold text-gray-900">{formatNumber(stats.totalVoted)}</p>
-          <p className="text-[10px] md:text-sm text-gray-500 mt-1">{stats.totalStations} stations</p>
+          <p className="text-xl md:text-3xl font-bold text-gray-900">{formatNumber(stats.totalValidVotes)}</p>
+          <p className="text-[10px] md:text-sm text-gray-500 mt-1">{stats.stationsCompleted} reporting</p>
         </Card>
       </div>
 
@@ -114,7 +114,7 @@ export default function AgentViewerPage() {
           <CandidateComparisonStack
             candidate1={stats.favCandidate1}
             candidate2={stats.favCandidate2}
-            totalVotes={stats.totalVoted}
+            totalVotes={stats.totalValidVotes}
           />
         </Card>
       )}
