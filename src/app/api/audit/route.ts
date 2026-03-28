@@ -4,22 +4,8 @@ import prisma from '@/lib/prisma';
 
 const RETENTION_DAYS = 14;
 
-/**
- * Delete audit logs older than the retention period.
- * Runs automatically on each GET request (fire-and-forget).
- */
-async function purgeOldLogs() {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
-
-  try {
-    await prisma.activityLog.deleteMany({
-      where: { createdAt: { lt: cutoff } },
-    });
-  } catch (error) {
-    console.error('Audit log purge error:', error);
-  }
-}
+// Log purging is intentionally NOT triggered from GET requests.
+// Use DELETE /api/audit to purge old logs explicitly (or via a cron job).
 
 function escapeCsvField(value: string | null | undefined): string {
   if (value == null) return '';
@@ -33,9 +19,6 @@ function escapeCsvField(value: string | null | undefined): string {
 export async function GET(request: NextRequest) {
   try {
     await requireRole('ADMIN');
-
-    // Fire-and-forget cleanup of old logs
-    purgeOldLogs();
 
     const { searchParams } = new URL(request.url);
     const exportMode = searchParams.get('export');

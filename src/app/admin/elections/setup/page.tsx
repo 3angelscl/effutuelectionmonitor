@@ -367,8 +367,8 @@ export default function ElectionSetupWizard() {
     <div>
       <AdminHeader title="Election Setup Wizard" />
       <div className="p-6 max-w-6xl mx-auto">
-        {/* Step progress */}
-        <div className="flex items-center justify-center gap-2 mb-8">
+        {/* Step progress — hidden on terminal completion screens */}
+        {step < 5 && <div className="flex items-center justify-center gap-2 mb-8">
           {stepLabels.map((label, i) => {
             const num = i + 1;
             const isActive = step === num;
@@ -391,7 +391,7 @@ export default function ElectionSetupWizard() {
               </div>
             );
           })}
-        </div>
+        </div>}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>

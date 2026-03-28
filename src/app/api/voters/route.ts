@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { logAudit } from '@/lib/audit';
 
 export async function GET(request: NextRequest) {
   try {
@@ -158,7 +159,7 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireRole('ADMIN');
+    const { user: admin } = await requireRole('ADMIN');
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -186,6 +187,15 @@ export async function DELETE(request: NextRequest) {
         prisma.voterTurnout.deleteMany({ where: { voterId: { in: ids } } }),
         prisma.voter.deleteMany({ where: { id: { in: ids } } }),
       ]);
+
+      await logAudit({
+        userId: admin.id,
+        action: 'DELETE',
+        entity: 'Voter',
+        entityId: stationId || 'ALL',
+        detail: `Bulk deleted ${ids.length} voter${ids.length !== 1 ? 's' : ''}${stationId ? ` for station ${stationId}` : ' across all stations'}`,
+        metadata: { deletedCount: ids.length, stationId: stationId || null },
+      });
 
       return NextResponse.json({ success: true, deletedCount: ids.length });
     }

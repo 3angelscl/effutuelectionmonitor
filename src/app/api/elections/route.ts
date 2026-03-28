@@ -64,6 +64,12 @@ export async function PUT(request: NextRequest) {
       throw error;
     }
 
+    // Keep isActive in sync with status so both fields are never contradictory
+    const isActiveUpdate =
+      data.status === 'ONGOING' ? { isActive: true } :
+      data.status === 'COMPLETED' || data.status === 'UPCOMING' ? { isActive: false } :
+      {};
+
     const election = await prisma.election.update({
       where: { id: data.id },
       data: {
@@ -71,6 +77,7 @@ export async function PUT(request: NextRequest) {
         ...(data.description !== undefined && { description: data.description }),
         ...(data.date !== undefined && { date: data.date ? new Date(data.date) : null }),
         ...(data.status && { status: data.status }),
+        ...isActiveUpdate,
         ...(data.favCandidate1Id !== undefined && { favCandidate1Id: data.favCandidate1Id }),
         ...(data.favCandidate2Id !== undefined && { favCandidate2Id: data.favCandidate2Id }),
       },

@@ -5,6 +5,21 @@ import bcrypt from 'bcryptjs';
 
 const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/;
 
+export async function GET() {
+  try {
+    const { user } = await requireAuth();
+    const profile = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { id: true, name: true, email: true, phone: true, photo: true },
+    });
+    if (!profile) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    return NextResponse.json(profile);
+  } catch (error) {
+    if (error instanceof ApiError) return error.toResponse();
+    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
+  }
+}
+
 export async function PUT(request: NextRequest) {
   try {
     const { user } = await requireAuth();
@@ -38,9 +53,10 @@ export async function PUT(request: NextRequest) {
       }
 
       const hashed = await bcrypt.hash(newPassword, 12);
+      // Increment sessionVersion to invalidate all other active sessions
       await prisma.user.update({
         where: { id: user.id },
-        data: { password: hashed },
+        data: { password: hashed, sessionVersion: { increment: 1 } },
       });
 
       return NextResponse.json({ success: true });

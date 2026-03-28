@@ -11,7 +11,6 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { eventBus, ServerEvent } from '@/lib/events';
-import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,25 +52,17 @@ export async function GET() {
         send({ type: event.type, payload: event.payload, timestamp: event.timestamp });
       });
 
-      // ── Heartbeat + notification polling ──────────────────
-      // Still poll notifications every 10s as a fallback,
-      // but the event bus delivers instant pushes for most events.
-      const heartbeat = setInterval(async () => {
+      // ── Heartbeat ──────────────────────────────────────────
+      // Sends a lightweight ping every 25s to keep the TCP connection alive.
+      // Notification counts are pushed via the event bus (notification:new)
+      // rather than polled here, so no DB query is needed per heartbeat.
+      const heartbeat = setInterval(() => {
         if (!alive) {
           clearInterval(heartbeat);
           return;
         }
-
-        try {
-          const unreadCount = await prisma.notification.count({
-            where: { userId: user.id, isRead: false },
-          });
-
-          send({ type: 'heartbeat', unreadCount, timestamp: new Date().toISOString() });
-        } catch {
-          // DB error — just skip this heartbeat
-        }
-      }, 10000);
+        send({ type: 'heartbeat', timestamp: new Date().toISOString() });
+      }, 25000);
 
       // Send initial connection event
       send({ type: 'connected', userId: user.id, role: user.role, timestamp: new Date().toISOString() });

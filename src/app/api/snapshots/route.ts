@@ -11,28 +11,44 @@ export async function POST() {
       return NextResponse.json({ error: 'No active election' }, { status: 400 });
     }
 
-    // Get all stations with their voter counts
-    const stations = await prisma.pollingStation.findMany({
-      include: {
-        voters: {
-          include: {
-            turnout: {
-              where: { electionId: activeElection.id },
-            },
-          },
-        },
+    // Use aggregate queries — never loads individual voter records into memory
+    const [registeredByStation, votedByStation, allStations] = await Promise.all([
+      // Registered voters per station (excluding soft-deleted)
+      prisma.voter.groupBy({
+        by: ['stationId'],
+        where: { deletedAt: null },
+        _count: { id: true },
+      }),
+      // Voted voters per station via turnout join
+      prisma.voterTurnout.groupBy({
+        by: ['electionId'],
+        where: { electionId: activeElection.id, hasVoted: true },
+        _count: { voterId: true },
+      }),
+      // All station IDs
+      prisma.pollingStation.findMany({ select: { id: true } }),
+    ]);
+
+    // Build per-station voted counts by querying through voters
+    const votedVotersByStation = await prisma.voter.groupBy({
+      by: ['stationId'],
+      where: {
+        deletedAt: null,
+        turnout: { some: { electionId: activeElection.id, hasVoted: true } },
       },
+      _count: { id: true },
     });
+
+    const registeredMap = new Map(registeredByStation.map((r) => [r.stationId, r._count.id]));
+    const votedMap = new Map(votedVotersByStation.map((v) => [v.stationId, v._count.id]));
 
     const snapshots = [];
     let overallVoted = 0;
     let overallRegistered = 0;
 
-    for (const station of stations) {
-      const totalRegistered = station.voters.length;
-      const totalVoted = station.voters.filter(
-        (v) => v.turnout.some((t) => t.hasVoted)
-      ).length;
+    for (const station of allStations) {
+      const totalRegistered = registeredMap.get(station.id) ?? 0;
+      const totalVoted = votedMap.get(station.id) ?? 0;
 
       overallRegistered += totalRegistered;
       overallVoted += totalVoted;
@@ -60,7 +76,7 @@ export async function POST() {
 
     return NextResponse.json({
       message: 'Snapshot recorded',
-      totalStations: stations.length,
+      totalStations: allStations.length,
       overallVoted,
       overallRegistered,
     });

@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     await prisma.activityLog.create({
       data: {
         userId: user.id,
-        type: type === 'CHECK_IN' ? 'STATION_ARRIVAL' : 'LOGOUT',
+        type: type === 'CHECK_IN' ? 'STATION_ARRIVAL' : 'STATION_DEPARTURE',
         title: type === 'CHECK_IN' ? 'Checked in at station' : 'Checked out from station',
         detail: `${station.name} (${station.psCode})${distanceWarning ? ` - ${distanceWarning}` : ''}`,
         metadata: JSON.stringify({ latitude, longitude, stationId: station.id }),

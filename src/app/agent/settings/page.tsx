@@ -33,9 +33,20 @@ export default function AgentSettingsPage() {
   const [settingUp2FA, setSettingUp2FA] = useState(false);
 
   useEffect(() => {
-    if (session?.user) {
-      setName((session.user as { name: string }).name || '');
-    }
+    // Fetch full profile from API to get stored phone number.
+    // Session only carries name/email/photo — phone is not included.
+    fetch('/api/users/profile')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.name) setName(data.name);
+        if (data.phone) setPhone(data.phone);
+      })
+      .catch(() => {
+        // Fall back to session name if API fails
+        if (session?.user) {
+          setName((session.user as { name: string }).name || '');
+        }
+      });
     // Load 2FA status
     fetch('/api/auth/2fa')
       .then((r) => r.json())

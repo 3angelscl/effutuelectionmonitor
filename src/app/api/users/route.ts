@@ -99,6 +99,10 @@ export async function DELETE(request: NextRequest) {
       select: { name: true, email: true, role: true },
     });
 
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     await prisma.user.update({
       where: { id },
       data: { deletedAt: new Date() },
