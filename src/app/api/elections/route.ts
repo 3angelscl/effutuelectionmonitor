@@ -59,7 +59,6 @@ export async function PUT(request: NextRequest) {
     let data;
     try {
       data = await parseBody(request, electionUpdateSchema);
-      console.log('UPDATING ELECTION:', data);
     } catch (error) {
       if (error instanceof ValidationError) return error.toResponse();
       throw error;
@@ -107,12 +106,18 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Election ID required' }, { status: 400 });
     }
 
-    const targetElection = await prisma.election.findUnique({ where: { id }, select: { name: true } });
+    const targetElection = await prisma.election.findUnique({ where: { id }, select: { name: true, isActive: true } });
 
-    await prisma.electionResult.deleteMany({ where: { electionId: id } });
-    await prisma.voterTurnout.deleteMany({ where: { electionId: id } });
-    await prisma.candidate.deleteMany({ where: { electionId: id } });
-    await prisma.election.delete({ where: { id } });
+    if (targetElection?.isActive) {
+      return NextResponse.json({ error: 'Cannot delete the active election. Deactivate it first.' }, { status: 400 });
+    }
+
+    await prisma.$transaction([
+      prisma.electionResult.deleteMany({ where: { electionId: id } }),
+      prisma.voterTurnout.deleteMany({ where: { electionId: id } }),
+      prisma.candidate.deleteMany({ where: { electionId: id } }),
+      prisma.election.delete({ where: { id } }),
+    ]);
 
     await logAudit({
       userId: user.id,

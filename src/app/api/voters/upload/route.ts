@@ -39,8 +39,9 @@ export async function POST(request: NextRequest) {
     });
     const stationMap = new Map(stations.map((s) => [s.psCode, s.id]));
 
-    // Get existing voter IDs per station
+    // Get existing voter IDs per station (exclude soft-deleted)
     const existingVoters = await prisma.voter.findMany({
+      where: { deletedAt: null },
       select: { voterId: true, stationId: true },
     });
     const existingKeys = new Set(existingVoters.map((v) => `${v.voterId}|${v.stationId}`));

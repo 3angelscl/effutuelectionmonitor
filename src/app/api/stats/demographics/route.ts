@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     const voters = await prisma.voter.findMany({
+      where: { deletedAt: null },
       select: {
         age: true,
         turnout: {

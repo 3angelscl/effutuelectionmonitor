@@ -46,14 +46,16 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type;
     if (userId) where.userId = userId;
 
-    // CSV export mode — no pagination, return all matching logs
+    // CSV export mode — capped at 100,000 rows to prevent memory exhaustion
     if (exportMode === 'csv') {
+      const MAX_EXPORT_ROWS = 100_000;
       const logs = await prisma.activityLog.findMany({
         where,
         include: {
           user: { select: { name: true, email: true, role: true } },
         },
         orderBy: { createdAt: 'desc' },
+        take: MAX_EXPORT_ROWS,
       });
 
       const today = new Date().toISOString().slice(0, 10);

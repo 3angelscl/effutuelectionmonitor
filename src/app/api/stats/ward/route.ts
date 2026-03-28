@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     const stations = await prisma.pollingStation.findMany({
       include: {
         voters: {
+          where: { deletedAt: null },
           include: {
             turnout: {
               where: { electionId: election.id },

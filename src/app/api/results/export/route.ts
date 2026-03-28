@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     if (electionId) where.electionId = electionId;
     if (candidateId) where.candidateId = candidateId;
 
+    const MAX_EXPORT_ROWS = 50_000;
     const results = await prisma.electionResult.findMany({
       where,
       include: {
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
         election: { select: { name: true } },
       },
       orderBy: [{ pollingStation: { psCode: 'asc' } }, { votes: 'desc' }],
+      take: MAX_EXPORT_ROWS,
     });
 
     const data = results.map((r) => ({

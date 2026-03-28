@@ -4,6 +4,10 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import QRCode from 'qrcode';
+import { createRateLimiter } from '@/lib/rate-limit';
+
+// 5 verification attempts per 5 minutes per email/user — prevents brute-force of 6-digit TOTP
+const twoFaLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 5 });
 
 // GET - Generate 2FA secret and QR code
 export async function GET() {
@@ -53,6 +57,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Email and code required' }, { status: 400 });
       }
 
+      // Rate limit by email to prevent brute-force
+      const { success: rateLimitOk } = twoFaLimiter.check(email.toLowerCase());
+      if (!rateLimitOk) {
+        return NextResponse.json(
+          { error: 'Too many verification attempts. Try again in 5 minutes.' },
+          { status: 429 },
+        );
+      }
+
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user || !user.twoFactorSecret) {
         return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
@@ -80,6 +93,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'enable') {
+      // Rate limit by userId
+      const { success: rateLimitOk } = twoFaLimiter.check(`setup:${userId}`);
+      if (!rateLimitOk) {
+        return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
+      }
+
       const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
         return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { resetPasswordSchema, parseData, ValidationError } from '@/lib/validations';
 
 // 10 reset attempts per 15 minutes per IP (prevents brute-force token guessing)
 const resetLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
@@ -18,15 +19,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { token, password } = await request.json();
-
-    if (!token || !password) {
-      return NextResponse.json({ error: 'Token and password are required' }, { status: 400 });
+    let data;
+    try {
+      data = parseData(await request.json(), resetPasswordSchema);
+    } catch (error) {
+      if (error instanceof ValidationError) return error.toResponse();
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-    }
+    const { token, password } = data;
 
     const resetRecord = await prisma.passwordReset.findUnique({
       where: { token },

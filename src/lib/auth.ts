@@ -25,13 +25,16 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password are required');
         }
 
-        const { success } = authLimiter.check(credentials.email.toLowerCase());
+        const normalizedEmail = credentials.email.toLowerCase().trim();
+
+        const { success } = authLimiter.check(normalizedEmail);
         if (!success) {
           throw new Error('Too many login attempts. Try again in 15 minutes.');
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+        // Also reject soft-deleted users
+        const user = await prisma.user.findFirst({
+          where: { email: normalizedEmail, deletedAt: null },
         });
 
         if (!user) {

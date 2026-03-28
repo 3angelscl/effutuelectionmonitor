@@ -249,7 +249,7 @@ export const broadcastSchema = z.object({
     .string()
     .min(1, 'Message cannot be empty')
     .max(5000, 'Message too long (max 5000 characters)')
-    .transform((s) => s.trim()),
+    .transform((s) => sanitizeText(s.trim())),
 });
 
 // ─── Incident Schemas ───────────────────────────────────────

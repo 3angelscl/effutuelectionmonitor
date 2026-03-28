@@ -62,14 +62,12 @@ export const POST = apiHandler(async (request: Request) => {
     throw new ApiError(400, 'No active election');
   }
 
-  // Result locking: check if existing results are FINAL
-  const existingResults = await prisma.electionResult.findMany({
-    where: { stationId, electionId: activeElection.id },
-    select: { resultType: true },
+  // Result locking: atomically check if existing results are FINAL
+  const lockedCount = await prisma.electionResult.count({
+    where: { stationId, electionId: activeElection.id, resultType: 'FINAL' },
   });
 
-  const hasLockedResults = existingResults.some((r) => r.resultType === 'FINAL');
-  if (hasLockedResults) {
+  if (lockedCount > 0) {
     if (user.role !== 'ADMIN' || !adminOverride) {
       throw new ApiError(403, 'Results are locked (FINAL). Only an admin can override with explicit confirmation.');
     }
