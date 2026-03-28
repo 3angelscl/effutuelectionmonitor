@@ -32,6 +32,7 @@ interface VoterData {
   lastName: string;
   age: number;
   psCode: string;
+  photo: string | null;
   hasVoted: boolean;
   stationId: string;
 }
@@ -242,9 +243,13 @@ export default function TurnoutPage() {
         {voters.map((voter) => (
           <div key={voter.id} className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-sm font-bold text-gray-600">
-                {voter.firstName[0]}{voter.lastName[0]}
-              </div>
+              {voter.photo ? (
+                <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-10 h-10 rounded-full object-cover border border-gray-200 shrink-0" />
+              ) : (
+                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-sm font-bold text-gray-600 shrink-0">
+                  {voter.firstName[0]}{voter.lastName[0]}
+                </div>
+              )}
               <div>
                 <p className="font-semibold text-gray-900 text-sm">{voter.firstName} {voter.lastName}</p>
                 <p className="text-xs text-gray-500">ID: {voter.voterId}</p>
@@ -285,8 +290,17 @@ export default function TurnoutPage() {
             {voters.map((voter) => (
               <tr key={voter.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="py-3 px-6 font-mono text-xs text-gray-700">{voter.voterId}</td>
-                <td className="py-3 px-4 font-medium text-gray-900">
-                  {voter.firstName} {voter.lastName}
+                <td className="py-3 px-4">
+                  <div className="flex items-center gap-3">
+                    {voter.photo ? (
+                      <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">
+                        {voter.firstName[0]}{voter.lastName[0]}
+                      </div>
+                    )}
+                    <span className="font-medium text-gray-900">{voter.firstName} {voter.lastName}</span>
+                  </div>
                 </td>
                 <td className="py-3 px-4 text-center text-gray-600">{voter.age}</td>
                 <td className="py-3 px-4 text-center">

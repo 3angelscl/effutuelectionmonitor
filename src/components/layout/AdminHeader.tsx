@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { MagnifyingGlassIcon, BellIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
 
@@ -15,6 +16,14 @@ interface Notification {
   isRead: boolean;
   link: string | null;
   createdAt: string;
+}
+
+interface VoterResult {
+  id: string;
+  voterId: string;
+  firstName: string;
+  lastName: string;
+  psCode: string;
 }
 
 interface AdminHeaderProps {
@@ -42,10 +51,16 @@ function getNotifIcon(type: string) {
 
 export default function AdminHeader({ title }: AdminHeaderProps) {
   const { data: session } = useSession();
+  const router = useRouter();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: notifData, mutate: mutateNotifs } = useSWR<{ notifications: Notification[]; unreadCount: number }>(
     '/api/notifications',
@@ -53,17 +68,29 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
     { refreshInterval: 15000 }
   );
 
+  const { data: searchResults } = useSWR<{ voters: VoterResult[] }>(
+    debouncedSearch.length >= 2 ? `/api/voters?search=${encodeURIComponent(debouncedSearch)}&limit=5` : null,
+    fetcher
+  );
+
   const unreadCount = notifData?.unreadCount || 0;
   const notifications = notifData?.notifications || [];
+  // Only show unread notifications in the dropdown
+  const unreadNotifications = notifications.filter((n) => !n.isRead);
 
   // Close dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearchOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
   }, []);
 
   const markAllRead = async () => {
@@ -90,6 +117,33 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
     setNotifOpen(false);
   };
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(val);
+      setSearchOpen(val.length >= 2);
+    }, 300);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      router.push(`/admin/voters?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchOpen(false);
+      setSearchQuery('');
+      setDebouncedSearch('');
+    }
+    if (e.key === 'Escape') setSearchOpen(false);
+  };
+
+  const handleSearchResultClick = (voter: VoterResult) => {
+    router.push(`/admin/voters?search=${encodeURIComponent(voter.voterId)}`);
+    setSearchOpen(false);
+    setSearchQuery('');
+    setDebouncedSearch('');
+  };
+
   const userName = (session?.user as { name?: string })?.name || 'User';
   const userEmail = session?.user?.email || '';
   const userRole = (session?.user as { role?: string })?.role || 'VIEWER';
@@ -106,14 +160,54 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
         <div className="flex items-center gap-4">
           {/* Search — hidden for viewers */}
           {!isViewer && (
-            <div className="relative">
+            <div className="relative" ref={searchRef}>
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search station or voter..."
                 aria-label="Search station or voter"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => { if (searchQuery.length >= 2) setSearchOpen(true); }}
                 className="pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               />
+              {searchOpen && (
+                <div className="absolute left-0 top-full mt-1 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+                  {searchResults?.voters && searchResults.voters.length > 0 ? (
+                    <>
+                      <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Voters</p>
+                      </div>
+                      {searchResults.voters.map((voter) => (
+                        <button
+                          key={voter.id}
+                          onClick={() => handleSearchResultClick(voter)}
+                          className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 border-b border-gray-50"
+                        >
+                          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-xs font-bold text-primary-600 shrink-0">
+                            {voter.firstName[0]}{voter.lastName[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{voter.firstName} {voter.lastName}</p>
+                            <p className="text-xs text-gray-500">{voter.voterId} · {voter.psCode}</p>
+                          </div>
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => { router.push(`/admin/voters?search=${encodeURIComponent(searchQuery)}`); setSearchOpen(false); setSearchQuery(''); setDebouncedSearch(''); }}
+                        className="w-full px-4 py-2.5 text-sm text-primary-600 hover:bg-primary-50 text-center font-medium"
+                      >
+                        See all results for &ldquo;{searchQuery}&rdquo;
+                      </button>
+                    </>
+                  ) : debouncedSearch.length >= 2 ? (
+                    <div className="px-4 py-6 text-center text-sm text-gray-500">
+                      No voters found for &ldquo;{debouncedSearch}&rdquo;
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
 
@@ -144,32 +238,30 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="p-6 text-center text-gray-400 text-sm">No notifications</div>
+                    {unreadNotifications.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <BellIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500 font-medium">You&apos;re all caught up!</p>
+                        <p className="text-xs text-gray-400 mt-1">No new notifications</p>
+                      </div>
                     ) : (
-                      notifications.slice(0, 10).map((notif) => (
+                      unreadNotifications.map((notif) => (
                         <button
                           key={notif.id}
                           onClick={() => handleNotifClick(notif)}
-                          className={`w-full p-3 flex items-start gap-3 hover:bg-gray-50 text-left border-b border-gray-50 ${
-                            !notif.isRead ? 'bg-primary-50/30' : ''
-                          }`}
+                          className="w-full p-3 flex items-start gap-3 hover:bg-gray-50 text-left border-b border-gray-50 bg-primary-50/30"
                         >
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${getNotifIcon(notif.type)}`}>
                             <BellIcon className="h-4 w-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm ${!notif.isRead ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                              {notif.title}
-                            </p>
+                            <p className="text-sm font-semibold text-gray-900">{notif.title}</p>
                             {notif.message && (
                               <p className="text-xs text-gray-500 truncate mt-0.5">{notif.message}</p>
                             )}
                             <p className="text-[10px] text-gray-400 mt-1">{getTimeAgo(notif.createdAt)}</p>
                           </div>
-                          {!notif.isRead && (
-                            <div className="w-2 h-2 bg-primary-600 rounded-full shrink-0 mt-1.5" />
-                          )}
+                          <div className="w-2 h-2 bg-primary-600 rounded-full shrink-0 mt-1.5" />
                         </button>
                       ))
                     )}
@@ -178,14 +270,6 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
               )}
             </div>
           )}
-
-          {/* Settings */}
-          <button
-            onClick={() => window.location.href = '/admin/settings'}
-            className="p-2 text-gray-400 hover:text-gray-600"
-          >
-            <Cog6ToothIcon className="h-5 w-5" />
-          </button>
 
           {/* User Avatar with Dropdown */}
           <div className="relative" ref={profileRef}>

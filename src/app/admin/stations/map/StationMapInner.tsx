@@ -52,12 +52,6 @@ function getMarkerColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'):
   }
 }
 
-const createColoredMarker = (color: string) => L.divIcon({
-  className: '',
-  html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.4)"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
 
 function getStatusLabel(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'): string {
   switch (status) {
@@ -80,7 +74,7 @@ function getStatusColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'):
 export default function StationMapInner({ stations }: StationMapInnerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const markersRef = useRef<L.CircleMarker[]>([]);
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
@@ -113,7 +107,6 @@ export default function StationMapInner({ stations }: StationMapInnerProps) {
 
       const status = getStationStatus(station);
       const color = getMarkerColor(status);
-      const icon = createColoredMarker(color);
       const statusLabel = getStatusLabel(status);
       const statusColor = getStatusColor(status);
 
@@ -147,9 +140,14 @@ export default function StationMapInner({ stations }: StationMapInnerProps) {
         </div>
       `;
 
-      const marker = L.marker([station.latitude, station.longitude], { icon })
-        .bindPopup(popupContent, { maxWidth: 260 })
-        .addTo(map);
+      const marker = L.circleMarker([station.latitude, station.longitude], {
+        radius: 9,
+        fillColor: color,
+        color: 'white',
+        weight: 2.5,
+        opacity: 1,
+        fillOpacity: 1,
+      }).bindPopup(popupContent, { maxWidth: 260 }).addTo(map);
 
       markersRef.current.push(marker);
     }

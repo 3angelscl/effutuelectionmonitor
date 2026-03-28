@@ -13,6 +13,7 @@ import {
   Cog6ToothIcon,
   EyeIcon,
   ExclamationTriangleIcon,
+  PhotoIcon,
 } from '@heroicons/react/24/outline';
 import { classNames } from '@/lib/utils';
 import AgentHeader from '@/components/layout/AgentHeader';
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Dashboard', href: '/agent', icon: Squares2X2Icon },
   { name: 'Record Turnout', href: '/agent/turnout', icon: ClipboardDocumentCheckIcon },
   { name: 'Submit Results', href: '/agent/results', icon: ChartBarSquareIcon },
+  { name: 'Tally Photos', href: '/agent/tally-photos', icon: PhotoIcon },
   { name: 'Incidents', href: '/agent/incidents', icon: ExclamationTriangleIcon },
   { name: 'Messages', href: '/agent/chat', icon: ChatBubbleLeftRightIcon },
   { name: 'Live Viewer', href: '/agent/viewer', icon: EyeIcon },

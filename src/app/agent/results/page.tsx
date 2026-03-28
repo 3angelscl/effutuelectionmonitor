@@ -45,6 +45,7 @@ export default function ResultsPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedType, setSubmittedType] = useState<string>('');
   const [error, setError] = useState('');
+  const [tallyWarning, setTallyWarning] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Load existing results
@@ -71,6 +72,12 @@ export default function ResultsPage() {
 
   const totalVotes = Object.values(votes).reduce((sum, v) => sum + (v || 0), 0);
 
+  // Reset tally warning when votes are changed
+  const handleVoteChange = (candidateId: string, value: number) => {
+    setVotes({ ...votes, [candidateId]: value });
+    setTallyWarning('');
+  };
+
   const handleSubmitClick = () => {
     if (!station?.id || !candidates) return;
     setError('');
@@ -85,6 +92,16 @@ export default function ResultsPage() {
       return;
     }
 
+    // Warn if submitted votes don't match recorded turnout (but allow proceeding)
+    if (station.totalVoted > 0 && totalVotes !== station.totalVoted && !tallyWarning) {
+      const diff = Math.abs(totalVotes - station.totalVoted);
+      setTallyWarning(
+        `Mismatch: submitted ${formatNumber(totalVotes)} vs turnout ${formatNumber(station.totalVoted)} (difference: ${formatNumber(diff)})`
+      );
+      return;
+    }
+
+    setTallyWarning('');
     setShowConfirm(true);
   };
 
@@ -163,6 +180,22 @@ export default function ResultsPage() {
         </div>
       )}
 
+      {tallyWarning && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-amber-600 text-lg shrink-0">⚠️</span>
+            <div>
+              <p className="text-amber-800 text-sm font-semibold mb-1">Tally Mismatch</p>
+              <p className="text-amber-700 text-sm">
+                Your submitted total ({formatNumber(totalVotes)}) does not match the recorded turnout ({formatNumber(station.totalVoted)} voters marked as voted)
+                — discrepancy of {formatNumber(Math.abs(totalVotes - station.totalVoted))}.
+              </p>
+              <p className="text-amber-600 text-xs mt-2">If you have verified your counts, click Submit again to proceed.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-2xl space-y-4">
         {(candidates || []).map((candidate) => (
           <Card key={candidate.id}>
@@ -183,9 +216,7 @@ export default function ResultsPage() {
                   min="0"
                   max={station.totalRegistered}
                   value={votes[candidate.id] || ''}
-                  onChange={(e) =>
-                    setVotes({ ...votes, [candidate.id]: parseInt(e.target.value) || 0 })
-                  }
+                  onChange={(e) => handleVoteChange(candidate.id, parseInt(e.target.value) || 0)}
                   placeholder="0"
                   className="w-full text-right text-lg font-bold px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
                 />
@@ -202,11 +233,21 @@ export default function ResultsPage() {
               <p className="text-xs text-gray-500">
                 Max: {formatNumber(station.totalRegistered)} registered voters
               </p>
+              {station.totalVoted > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Recorded turnout: {formatNumber(station.totalVoted)} voted
+                </p>
+              )}
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-gray-900">{formatNumber(totalVotes)}</p>
+              <p className={`text-2xl font-bold ${station.totalVoted > 0 && totalVotes !== station.totalVoted && totalVotes > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                {formatNumber(totalVotes)}
+              </p>
               {totalVotes > station.totalRegistered && (
                 <Badge variant="danger">Exceeds registered voters</Badge>
+              )}
+              {station.totalVoted > 0 && totalVotes > 0 && totalVotes !== station.totalVoted && totalVotes <= station.totalRegistered && (
+                <Badge variant="warning">Differs from turnout</Badge>
               )}
             </div>
           </div>

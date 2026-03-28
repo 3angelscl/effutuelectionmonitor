@@ -55,6 +55,7 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
 
   const unreadCount = notifData?.unreadCount || 0;
   const notifications = notifData?.notifications || [];
+  const unreadNotifications = notifications.filter((n) => !n.isRead);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -138,32 +139,30 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
                   )}
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
-                    <div className="p-6 text-center text-gray-400 text-sm">No notifications</div>
+                  {unreadNotifications.length === 0 ? (
+                    <div className="p-6 text-center">
+                      <BellIcon className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500 font-medium">You&apos;re all caught up!</p>
+                      <p className="text-xs text-gray-400 mt-1">No new notifications</p>
+                    </div>
                   ) : (
-                    notifications.slice(0, 10).map((notif) => (
+                    unreadNotifications.map((notif) => (
                       <button
                         key={notif.id}
                         onClick={() => handleNotifClick(notif)}
-                        className={`w-full p-3 flex items-start gap-3 hover:bg-gray-50 text-left border-b border-gray-50 ${
-                          !notif.isRead ? 'bg-primary-50/30' : ''
-                        }`}
+                        className="w-full p-3 flex items-start gap-3 hover:bg-gray-50 text-left border-b border-gray-50 bg-primary-50/30"
                       >
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${getNotifIcon(notif.type)}`}>
                           <BellIcon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm ${!notif.isRead ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                            {notif.title}
-                          </p>
+                          <p className="text-sm font-semibold text-gray-900">{notif.title}</p>
                           {notif.message && (
                             <p className="text-xs text-gray-500 truncate mt-0.5">{notif.message}</p>
                           )}
                           <p className="text-[10px] text-gray-400 mt-1">{getTimeAgo(notif.createdAt)}</p>
                         </div>
-                        {!notif.isRead && (
-                          <div className="w-2 h-2 bg-primary-600 rounded-full shrink-0 mt-1.5" />
-                        )}
+                        <div className="w-2 h-2 bg-primary-600 rounded-full shrink-0 mt-1.5" />
                       </button>
                     ))
                   )}
@@ -171,14 +170,6 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
               </div>
             )}
           </div>
-
-          {/* Settings */}
-          <button
-            onClick={() => window.location.href = '/agent/settings'}
-            className="p-2 text-gray-400 hover:text-gray-600"
-          >
-            <Cog6ToothIcon className="h-5 w-5" />
-          </button>
 
           {/* User Avatar with Dropdown */}
           <div className="relative" ref={profileRef}>

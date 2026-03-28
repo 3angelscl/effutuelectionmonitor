@@ -5,7 +5,7 @@ import path from 'path';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole('ADMIN');
+    await requireRole(['ADMIN', 'OFFICER']);
 
     const formData = await request.formData();
     const file = formData.get('file') as File;

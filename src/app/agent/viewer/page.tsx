@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
+import CandidateComparisonStack from '@/components/ui/CandidateComparisonStack';
 import { formatNumber } from '@/lib/utils';
 import {
   ArrowPathIcon,
@@ -106,6 +107,17 @@ export default function AgentViewerPage() {
           <p className="text-sm text-gray-500 mt-1">Across {stats.totalStations} polling stations</p>
         </Card>
       </div>
+
+      {/* Key Candidates Comparison */}
+      {(stats.favCandidate1 || stats.favCandidate2) && (
+        <Card>
+          <CandidateComparisonStack
+            candidate1={stats.favCandidate1}
+            candidate2={stats.favCandidate2}
+            totalVotes={stats.totalVoted}
+          />
+        </Card>
+      )}
 
       {/* Geographic Heatmap */}
       <Card>

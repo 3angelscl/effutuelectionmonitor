@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import useSWRInfinite from 'swr/infinite';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
@@ -46,12 +47,15 @@ interface VoterPage {
 
 export default function VoterManagement() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const userRole = (session?.user as { role?: string })?.role;
   const canModify = userRole === 'ADMIN';
   const canUpload = userRole === 'ADMIN' || userRole === 'OFFICER';
 
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  // Support search from URL params (e.g. navigating from header search)
+  const initialSearch = searchParams.get('search') || '';
+  const [search, setSearch] = useState(initialSearch);
+  const [searchInput, setSearchInput] = useState(initialSearch);
   const [psFilter, setPsFilter] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -346,13 +350,15 @@ export default function VoterManagement() {
                 Delete All
               </Button>
             )}
-            <Button
-              variant="outline"
-              icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-              onClick={() => window.open('/api/voters/export?format=xlsx', '_blank')}
-            >
-              Export
-            </Button>
+            {canUpload && (
+              <Button
+                variant="outline"
+                icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                onClick={() => window.open('/api/voters/export?format=xlsx', '_blank')}
+              >
+                Export
+              </Button>
+            )}
             {canUpload && (
               <Button
                 icon={<ArrowUpTrayIcon className="h-4 w-4" />}
