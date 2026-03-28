@@ -91,6 +91,7 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
 
   const userName = (session?.user as { name?: string })?.name || 'User';
   const userEmail = session?.user?.email || '';
+  const userPhoto = (session?.user as { photo?: string | null })?.photo;
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -181,18 +182,33 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
           <div className="relative" ref={profileRef}>
             <button
               onClick={() => { setProfileOpen(!profileOpen); setNotifOpen(false); }}
-              className="w-9 h-9 bg-navy-700 rounded-full flex items-center justify-center hover:bg-navy-800 transition-colors"
+              className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center hover:ring-2 hover:ring-primary-400 transition-all shrink-0"
             >
-              <span className="text-white text-sm font-medium">
-                {userName[0]?.toUpperCase() || 'A'}
-              </span>
+              {userPhoto ? (
+                <img src={userPhoto} alt={userName} className="w-9 h-9 object-cover rounded-full" />
+              ) : (
+                <div className="w-9 h-9 bg-primary-600 rounded-full flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">
+                    {userName[0]?.toUpperCase() || 'A'}
+                  </span>
+                </div>
+              )}
             </button>
 
             {profileOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
-                <div className="p-4 border-b border-gray-100">
-                  <p className="text-sm font-semibold text-gray-900">{userName}</p>
-                  <p className="text-xs text-gray-500">{userEmail}</p>
+                <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+                  {userPhoto ? (
+                    <img src={userPhoto} alt={userName} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold text-primary-600">{userName[0]?.toUpperCase() || 'A'}</span>
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
+                    <p className="text-xs text-gray-500 truncate">{userEmail}</p>
+                  </div>
                 </div>
                 <div className="py-1">
                   <button

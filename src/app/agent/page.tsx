@@ -6,7 +6,9 @@ import useSWR from 'swr';
 import Card from '@/components/ui/Card';
 import StatCard from '@/components/ui/StatCard';
 import Badge from '@/components/ui/Badge';
+import CandidateComparisonStack from '@/components/ui/CandidateComparisonStack';
 import { formatNumber } from '@/lib/utils';
+import { DashboardStats } from '@/types';
 import {
   UserGroupIcon,
   CheckCircleIcon,
@@ -41,8 +43,10 @@ export default function AgentDashboard() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [distanceWarning, setDistanceWarning] = useState<string | null>(null);
 
+  const { data: stats } = useSWR<DashboardStats>('/api/stats', fetcher, { refreshInterval: 60000 });
+
   const userId = (session?.user as { id?: string })?.id;
-  const agentStation = (stations || []).find((s) => s.agentId === userId);
+  const agentStation = (Array.isArray(stations) ? stations : []).find((s) => s.agentId === userId);
 
   const isCheckedIn = checkInData?.checkInStatus?.type === 'CHECK_IN';
   const checkInTime = checkInData?.checkInStatus?.timestamp
@@ -149,6 +153,17 @@ export default function AgentDashboard() {
           icon={<ClockIcon className="h-6 w-6" />}
         />
       </div>
+
+      {/* Key Candidates Comparison */}
+      {stats && (stats.favCandidate1 || stats.favCandidate2) && (
+        <Card>
+          <CandidateComparisonStack
+            candidate1={stats.favCandidate1}
+            candidate2={stats.favCandidate2}
+            totalVotes={stats.totalVoted}
+          />
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -1,6 +1,7 @@
 'use client';
 
 import { lazy, Suspense, useState, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -61,6 +62,10 @@ interface ElectionComparison {
 }
 
 export default function AdminViewerPage() {
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+  const canSeeDiscrepancies = userRole && userRole !== 'VIEWER';
+
   const { data: stats, isLoading, mutate } = useSWR<DashboardStats>('/api/stats', fetcher, {
     refreshInterval: 600000,
     revalidateOnFocus: true,
@@ -150,8 +155,8 @@ export default function AdminViewerPage() {
           </div>
         </div>
 
-        {/* Discrepancy Alerts Banner */}
-        {discrepancies.length > 0 && (
+        {/* Discrepancy Alerts Banner — hidden from VIEWER role */}
+        {canSeeDiscrepancies && discrepancies.length > 0 && (
           <div className={`rounded-xl border p-4 ${highDiscrepancies.length > 0 ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
             <div className="flex items-start gap-3">
               <ExclamationTriangleIcon className={`h-5 w-5 mt-0.5 ${highDiscrepancies.length > 0 ? 'text-red-600' : 'text-yellow-600'}`} />
