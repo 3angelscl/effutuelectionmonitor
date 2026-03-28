@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String
+  name            String
+  role            String    @default("VIEWER") // ADMIN, AGENT, VIEWER, OFFICER
+  phone           String?
+  photo           String?
+  twoFactorSecret String?
+  twoFactorEnabled Boolean  @default(false)
+  sessionVersion  Int       @default(1)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assignedStations  PollingStation[] @relation("StationAgent")
+  markedTurnout     VoterTurnout[]   @relation("MarkedBy")
+  submittedResults  ElectionResult[] @relation("SubmittedBy")
+  approvedResults   ElectionResult[] @relation("ApprovedBy")
+  activityLogs      ActivityLog[]
+  sentMessages      ChatMessage[]    @relation("MessageSender")
+  receivedMessages  ChatMessage[]    @relation("MessageReceiver")
+  notifications     Notification[]
+  passwordResets    PasswordReset[]
+  checkIns          AgentCheckIn[]
+  incidents         Incident[]
+  tallyPhotos       TallyPhoto[]
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model AgentCheckIn {
+  id        String   @id @default(uuid())
+  userId    String
+  stationId String
+  type      String   // CHECK_IN, CHECK_OUT
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stationId])
+  @@index([userId, createdAt])
+}
+
+model Election {
+  id          String   @id @default(uuid())
+  name        String   // e.g. "Election 2024", "Election 2025"
+  description String?
+  date        DateTime?
+  isActive    Boolean  @default(false)
+  status      String   @default("UPCOMING") // UPCOMING, ONGOING, COMPLETED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidates Candidate[]
+  results    ElectionResult[]
+  turnout    VoterTurnout[]
+  favCandidate1Id String?
+  favCandidate2Id String?
+  snapshots  TurnoutSnapshot[]
+}
+
+model PollingStation {
+  id         String   @id @default(uuid())
+  psCode     String   @unique
+  name       String
+  location   String?
+  ward       String?
+  latitude   Float?
+  longitude  Float?
+  agentId    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  agent    User?          @relation("StationAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  voters   Voter[]
+  results  ElectionResult[]
+  checkIns AgentCheckIn[]
+  incidents Incident[]
+  tallyPhotos TallyPhoto[]
+  turnoutSnapshots TurnoutSnapshot[]
+
+  @@index([ward])
+}
+
+model Voter {
+  id        String    @id @default(uuid())
+  voterId   String
+  firstName String
+  lastName  String
+  age       Int
+  psCode    String
+  stationId String
+  photo     String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  pollingStation PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  turnout        VoterTurnout[]
+
+  @@unique([voterId, stationId])
+  @@index([stationId])
+  @@index([lastName, firstName])
+}
+
+// Per-election voting record — tracks who voted in which election
+model VoterTurnout {
+  id         String    @id @default(uuid())
+  voterId    String
+  electionId String
+  hasVoted   Boolean   @default(false)
+  votedAt    DateTime?
+  markedById String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  voter      Voter    @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  election   Election @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  markedBy   User?    @relation("MarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@unique([voterId, electionId])
+  @@index([electionId])
+  @@index([voterId])
+}
+
+model Candidate {
+  id         String   @id @default(uuid())
+  name       String
+  party      String
+  partyFull  String?
+  color      String?  @default("#3B82F6")
+  photo      String?
+  electionId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  election Election         @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  results  ElectionResult[]
+
+  @@index([electionId])
+}
+
+model ElectionResult {
+  id              String    @id @default(uuid())
+  stationId       String
+  candidateId     String
+  votes           Int       @default(0)
+  resultType      String    @default("PROVISIONAL") // PROVISIONAL or FINAL
+  approvalStatus  String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  submittedById   String
+  approvedById    String?
+  approvedAt      DateTime?
+  electionId      String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  pollingStation PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  submittedBy    User           @relation("SubmittedBy", fields: [submittedById], references: [id], onDelete: Cascade)
+  approvedBy     User?          @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
+
+  @@unique([stationId, candidateId, electionId])
+  @@index([electionId])
+  @@index([approvalStatus])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // LOGIN, LOGOUT, VOTER_CHECKIN, RESULTS_SUBMITTED, CONNECTIVITY_ALERT, STATION_ARRIVAL
+  title     String
+  detail    String?
+  metadata  String?  // JSON string for extra data (voter ID, device info, etc.)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
+  @@index([senderId, receiverId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // RESULT_SUBMITTED, AGENT_LOGIN, ALERT, SYSTEM, CHAT, BROADCAST
+  title     String
+  message   String?
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Incident {
+  id          String   @id @default(uuid())
+  userId      String
+  stationId   String
+  type        String   // IRREGULARITY, VIOLENCE, EQUIPMENT_FAILURE, VOTER_INTIMIDATION, OTHER
+  severity    String   @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  title       String
+  description String
+  latitude    Float?
+  longitude   Float?
+  photoUrl    String?
+  status      String   @default("OPEN") // OPEN, INVESTIGATING, RESOLVED, DISMISSED
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TallyPhoto {
+  id        String   @id @default(uuid())
+  userId    String
+  stationId String
+  photoUrl  String
+  caption   String?
+  createdAt DateTime @default(now())
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@index([stationId])
+  @@index([userId])
+}
+
+model TurnoutSnapshot {
+  id         String   @id @default(uuid())
+  electionId String
+  stationId  String?
+  totalVoted Int
+  totalRegistered Int
+  timestamp  DateTime @default(now())
+
+  election Election      @relation(fields: [electionId], references: [id], onDelete: Cascade)
+  station  PollingStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+
+  @@index([electionId, timestamp])
+  @@index([stationId])
+}

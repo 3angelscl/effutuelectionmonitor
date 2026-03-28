@@ -1,0 +1,692 @@
+'use client';
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import useSWRInfinite from 'swr/infinite';
+import useSWR from 'swr';
+import AdminHeader from '@/components/layout/AdminHeader';
+import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import Input from '@/components/ui/Input';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { toast } from 'sonner';
+import {
+  MagnifyingGlassIcon,
+  ArrowUpTrayIcon,
+  ArrowDownTrayIcon,
+  FunnelIcon,
+  PencilIcon,
+  TrashIcon,
+  PhotoIcon,
+} from '@heroicons/react/24/outline';
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const PAGE_SIZE = 30;
+
+interface VoterData {
+  id: string;
+  voterId: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  psCode: string;
+  photo: string | null;
+  hasVoted: boolean;
+  pollingStation: { name: string; psCode: string };
+}
+
+interface VoterPage {
+  voters: VoterData[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export default function VoterManagement() {
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+  const canModify = userRole === 'ADMIN';
+  const canUpload = userRole === 'ADMIN' || userRole === 'OFFICER';
+
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [psFilter, setPsFilter] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{
+    successCount: number;
+    errorCount: number;
+    errors: string[];
+  } | null>(null);
+
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editVoter, setEditVoter] = useState<VoterData | null>(null);
+  const [editForm, setEditForm] = useState({
+    voterId: '', firstName: '', lastName: '', age: '', photo: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  // Infinite loading with SWR
+  const getKey = (pageIndex: number, prevData: VoterPage | null) => {
+    if (prevData && pageIndex >= prevData.totalPages) return null;
+    const params = new URLSearchParams({
+      page: String(pageIndex + 1),
+      limit: String(PAGE_SIZE),
+      ...(search && { search }),
+      ...(psFilter && { stationId: psFilter }),
+    });
+    return `/api/voters?${params}`;
+  };
+
+  const {
+    data: pages,
+    size,
+    setSize,
+    mutate,
+    isValidating,
+  } = useSWRInfinite<VoterPage>(getKey, fetcher, {
+    revalidateFirstPage: true,
+    revalidateOnFocus: false,
+  });
+
+  const { data: stations } = useSWR('/api/stations', fetcher);
+
+  const allVoters = pages ? pages.flatMap((p) => Array.isArray(p?.voters) ? p.voters : []) : [];
+  const total = pages?.[0]?.total || 0;
+  const totalPages = pages?.[0]?.totalPages || 1;
+  const isLoadingMore = size > 0 && pages && typeof pages[size - 1] === 'undefined';
+  const hasMore = size < totalPages;
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isValidating) {
+          setSize((s) => s + 1);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, isValidating, setSize]);
+
+  // Reset pages when search/filter changes
+  useEffect(() => {
+    setSize(1);
+  }, [search, psFilter, setSize]);
+
+  const handleSearch = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSearchInput(e.target.value);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        setSearch(e.target.value);
+      }, 400);
+    },
+    []
+  );
+
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
+
+  const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const res = await fetch('/api/voters/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await res.json();
+      setUploadResult(result);
+      mutate();
+    } catch {
+      setUploadResult({ successCount: 0, errorCount: 1, errors: ['Upload failed'] });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // --- Edit Voter ---
+  const openEditModal = (voter: VoterData) => {
+    setEditVoter(voter);
+    setEditForm({
+      voterId: voter.voterId,
+      firstName: voter.firstName,
+      lastName: voter.lastName,
+      age: String(voter.age),
+      photo: voter.photo || '',
+    });
+    setError('');
+    setEditModalOpen(true);
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/voters/photo', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to upload photo');
+        return;
+      }
+      const { url } = await res.json();
+      setEditForm((f) => ({ ...f, photo: url }));
+    } catch {
+      setError('Failed to upload photo');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editVoter) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/voters', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editVoter.id,
+          voterId: editForm.voterId,
+          firstName: editForm.firstName,
+          lastName: editForm.lastName,
+          age: editForm.age,
+          photo: editForm.photo,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to update voter');
+        return;
+      }
+      mutate();
+      toast.success('Voter updated');
+      setEditModalOpen(false);
+      setEditVoter(null);
+    } catch {
+      setError('An error occurred');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // --- Delete Voter ---
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetch(`/api/voters?id=${deleteTarget}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to delete voter');
+        return;
+      }
+      mutate();
+      toast.success('Voter deleted');
+    } catch {
+      toast.error('Failed to delete voter. Please try again.');
+    } finally {
+      setDeleteTarget(null);
+    }
+  };
+
+  // --- Delete All Voters ---
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    try {
+      const params = new URLSearchParams();
+      if (psFilter) params.set('stationId', psFilter);
+      const res = await fetch(`/api/voters?deleteAll=true&${params}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to delete voters');
+        return;
+      }
+      const data = await res.json();
+      toast.success(`Successfully deleted ${data.deletedCount} voters`);
+      mutate();
+    } catch {
+      toast.error('Failed to delete voters. Please try again.');
+    } finally {
+      setDeletingAll(false);
+      setDeleteAllOpen(false);
+    }
+  };
+
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-orange-500',
+      'bg-teal-600', 'bg-rose-600', 'bg-indigo-600', 'bg-amber-600',
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const deleteAllLabel = psFilter
+    ? `all voters at this station`
+    : `all ${total.toLocaleString()} voters`;
+
+  return (
+    <div className="flex-1">
+      <AdminHeader title="Voters Register" />
+
+      <div className="p-6 space-y-6">
+        {/* Actions Bar */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by voter ID or name..."
+                value={searchInput}
+                onChange={handleSearch}
+                className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              />
+            </div>
+
+            {/* Station Filter */}
+            <div className="relative">
+              <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <select
+                value={psFilter}
+                onChange={(e) => {
+                  setPsFilter(e.target.value);
+                }}
+                className="pl-10 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              >
+                <option value="">All Stations</option>
+                {(Array.isArray(stations) ? stations : []).map((s: { id: string; psCode: string; name: string }) => (
+                  <option key={s.id} value={s.id}>
+                    {s.psCode} - {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {canModify && total > 0 && (
+              <Button
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50"
+                icon={<TrashIcon className="h-4 w-4" />}
+                onClick={() => setDeleteAllOpen(true)}
+              >
+                Delete All
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+              onClick={() => window.open('/api/voters/export?format=xlsx', '_blank')}
+            >
+              Export
+            </Button>
+            {canUpload && (
+              <Button
+                icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+                onClick={() => {
+                  setUploadResult(null);
+                  setUploadModalOpen(true);
+                }}
+              >
+                Upload Voters
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Total count */}
+        <p className="text-sm text-gray-500">{total.toLocaleString()} voters found</p>
+
+        {/* Voters Table */}
+        <Card padding={false}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Voter</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Voter ID</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">PS Code</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Station</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  {canModify && <th className="text-center py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {allVoters.map((voter) => (
+                  <tr key={voter.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-3 px-6">
+                      <div className="flex items-center gap-3">
+                        {voter.photo ? (
+                          <img
+                            src={voter.photo}
+                            alt={`${voter.firstName} ${voter.lastName}`}
+                            className="w-9 h-9 rounded-full object-cover shrink-0 border border-gray-200"
+                          />
+                        ) : (
+                          <div className={`w-9 h-9 ${getAvatarColor(voter.firstName + voter.lastName)} rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                            {getInitials(voter.firstName, voter.lastName)}
+                          </div>
+                        )}
+                        <span className="font-medium text-gray-900">
+                          {voter.firstName} {voter.lastName}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-700">{voter.voterId}</td>
+                    <td className="py-3 px-4 text-center text-gray-600">{voter.age}</td>
+                    <td className="py-3 px-4 font-mono text-xs">{voter.psCode}</td>
+                    <td className="py-3 px-4 text-gray-600">{voter.pollingStation.name}</td>
+                    <td className="py-3 px-4 text-center">
+                      <Badge variant={voter.hasVoted ? 'success' : 'neutral'} size="sm">
+                        {voter.hasVoted ? 'Voted' : 'Not Voted'}
+                      </Badge>
+                    </td>
+                    {canModify && (
+                      <td className="py-3 px-6 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openEditModal(voter)}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Edit voter"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(voter.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete voter"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {allVoters.length === 0 && !isValidating && (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-gray-500">
+                      {search || psFilter ? 'No voters found matching your filters' : 'No voters registered yet. Upload a voter register to get started.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+
+          {/* Loading indicator */}
+          {(isLoadingMore || isValidating) && allVoters.length > 0 && (
+            <div className="py-4 text-center">
+              <div className="inline-flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin" />
+                Loading more voters...
+              </div>
+            </div>
+          )}
+
+          {/* End of list */}
+          {!hasMore && allVoters.length > 0 && (
+            <div className="py-3 text-center text-xs text-gray-400">
+              Showing all {total.toLocaleString()} voters
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Upload Modal */}
+      <Modal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        title="Upload Voter Register"
+        size="md"
+      >
+        <form onSubmit={handleUpload} className="space-y-4">
+          {/* Format guide + template download */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Required CSV columns</p>
+            <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, ps_code</code>
+            <button
+              type="button"
+              onClick={() => {
+                const csv = 'voter_id,first_name,last_name,age,ps_code\nV001,John,Mensah,35,B100101\nV002,Abena,Asante,42,B100101\n';
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'voter_register_template.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 hover:text-blue-900 underline"
+            >
+              <ArrowDownTrayIcon className="h-3.5 w-3.5" />
+              Download CSV Template
+            </button>
+          </div>
+
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-500 transition-colors">
+            <ArrowUpTrayIcon className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+            <input
+              type="file"
+              name="file"
+              accept=".csv,.xlsx,.xls"
+              required
+              className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700 file:font-medium hover:file:bg-primary-100"
+            />
+            <p className="text-xs text-gray-500 mt-2">CSV or Excel (.xlsx) accepted · max 5 MB</p>
+          </div>
+
+          {/* Upload progress bar */}
+          {uploading && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>Processing upload...</span>
+                <span className="animate-pulse">Please wait</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-primary-500 rounded-full animate-pulse w-3/4" />
+              </div>
+            </div>
+          )}
+
+          {uploadResult && (
+            <div className={`rounded-lg border p-4 space-y-2 ${uploadResult.errorCount > 0 && uploadResult.successCount === 0 ? 'bg-red-50 border-red-200' : uploadResult.errorCount > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="flex items-center gap-2">
+                {uploadResult.successCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-green-700">
+                    ✓ {uploadResult.successCount} voters imported
+                  </span>
+                )}
+                {uploadResult.errorCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-red-700 ml-auto">
+                    {uploadResult.errorCount} errors
+                  </span>
+                )}
+              </div>
+              {uploadResult.errors.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-red-700 font-medium mb-1">View errors ({uploadResult.errors.length})</summary>
+                  <ul className="space-y-0.5 max-h-40 overflow-y-auto text-red-700 bg-red-50 rounded p-2">
+                    {uploadResult.errors.map((err, i) => (
+                      <li key={i} className="flex gap-1.5">
+                        <span className="text-red-400 shrink-0">•</span>
+                        {err}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-3 justify-end">
+            <Button variant="secondary" type="button" onClick={() => setUploadModalOpen(false)}>
+              {uploadResult ? 'Close' : 'Cancel'}
+            </Button>
+            {!uploadResult && (
+              <Button type="submit" loading={uploading}>
+                Upload
+              </Button>
+            )}
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Voter Modal */}
+      <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Voter">
+        <form onSubmit={handleEdit} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+          )}
+          {editVoter && (
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-500">
+                Station: {editVoter.pollingStation.psCode} - {editVoter.pollingStation.name}
+              </p>
+            </div>
+          )}
+
+          {/* Photo Upload */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Voter Photo
+            </label>
+            <div className="flex items-center gap-4">
+              {editForm.photo ? (
+                <img
+                  src={editForm.photo}
+                  alt="Preview"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                  <PhotoIcon className="h-6 w-6 text-gray-400" />
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="cursor-pointer px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700 transition-colors inline-block text-center">
+                  {photoUploading ? 'Uploading...' : editForm.photo ? 'Change Photo' : 'Upload Photo'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="hidden"
+                    disabled={photoUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handlePhotoUpload(file);
+                    }}
+                  />
+                </label>
+                {editForm.photo && (
+                  <button
+                    type="button"
+                    onClick={() => setEditForm((f) => ({ ...f, photo: '' }))}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <Input
+            label="Voter ID"
+            value={editForm.voterId}
+            onChange={(e) => setEditForm((f) => ({ ...f, voterId: e.target.value }))}
+            placeholder="10-digit voter ID"
+            required
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="First Name"
+              value={editForm.firstName}
+              onChange={(e) => setEditForm((f) => ({ ...f, firstName: e.target.value }))}
+              required
+            />
+            <Input
+              label="Last Name"
+              value={editForm.lastName}
+              onChange={(e) => setEditForm((f) => ({ ...f, lastName: e.target.value }))}
+              required
+            />
+          </div>
+          <Input
+            label="Age"
+            type="number"
+            value={editForm.age}
+            onChange={(e) => setEditForm((f) => ({ ...f, age: e.target.value }))}
+            required
+          />
+          <div className="flex gap-3 justify-end pt-4">
+            <Button variant="secondary" type="button" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Voter"
+        message="Are you sure you want to delete this voter?"
+        confirmLabel="Delete"
+        variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={deleteAllOpen}
+        onClose={() => setDeleteAllOpen(false)}
+        onConfirm={handleDeleteAll}
+        title="Delete All Voters"
+        message={`Are you sure you want to permanently delete ${deleteAllLabel}? This will also delete all associated turnout records. This action cannot be undone.`}
+        confirmLabel="Delete All"
+        variant="danger"
+        loading={deletingAll}
+      />
+
+    </div>
+  );
+}

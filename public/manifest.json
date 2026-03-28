@@ -1,0 +1,38 @@
+{
+  "name": "Effutu Dream Election Monitoring Portal",
+  "short_name": "ElectionMonitor",
+  "description": "Real-time election monitoring and polling station analytics for Effutu Constituency, Ghana",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/uploads/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/uploads/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["government", "productivity"],
+  "lang": "en-GH",
+  "shortcuts": [
+    {
+      "name": "Admin Dashboard",
+      "url": "/admin",
+      "description": "Open admin dashboard"
+    },
+    {
+      "name": "Agent Portal",
+      "url": "/agent",
+      "description": "Open agent field portal"
+    }
+  ]
+}
