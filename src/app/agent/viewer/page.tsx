@@ -20,7 +20,7 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function AgentViewerPage() {
   const { data: stats, isLoading, mutate } = useSWR<DashboardStats>('/api/stats', fetcher, {
-    refreshInterval: 600000,
+    refreshInterval: 30000, // 30-second fallback if SSE is unavailable
     revalidateOnFocus: true,
   });
 

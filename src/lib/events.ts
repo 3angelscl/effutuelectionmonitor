@@ -61,10 +61,14 @@ class EventBus {
   }
 }
 
-// Singleton — survives across hot-reloads in dev
+// Singleton — pinned to globalThis so it survives across:
+//   - hot-reloads in dev
+//   - multiple webpack chunks that each bundle this module separately in prod
 const globalForEvents = globalThis as unknown as { eventBus: EventBus | undefined };
-export const eventBus = globalForEvents.eventBus ?? new EventBus();
-if (process.env.NODE_ENV !== 'production') globalForEvents.eventBus = eventBus;
+if (!globalForEvents.eventBus) {
+  globalForEvents.eventBus = new EventBus();
+}
+export const eventBus = globalForEvents.eventBus;
 
 /**
  * Broadcast an event to all connected SSE clients.

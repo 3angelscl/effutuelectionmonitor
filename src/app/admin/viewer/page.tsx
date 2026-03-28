@@ -68,16 +68,16 @@ export default function AdminViewerPage() {
   const canSeeDiscrepancies = userRole && userRole !== 'VIEWER';
 
   const { data: stats, isLoading, mutate } = useSWR<DashboardStats>('/api/stats', fetcher, {
-    refreshInterval: 600000,
+    refreshInterval: 30000, // 30-second fallback if SSE is unavailable
     revalidateOnFocus: true,
   });
 
   const { data: trendData } = useSWR<TrendPoint[]>('/api/snapshots?hours=24', fetcher, {
-    refreshInterval: 300000,
+    refreshInterval: 60000, // 1-minute fallback
   });
 
   const { data: regionalData } = useSWR<RegionalData[]>('/api/stats/regional', fetcher, {
-    refreshInterval: 600000,
+    refreshInterval: 60000, // 1-minute fallback
   });
 
   const { data: compareData } = useSWR<{ elections: ElectionComparison[] }>('/api/elections/compare', fetcher);
