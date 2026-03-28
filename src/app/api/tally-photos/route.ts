@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { broadcastEvent } from '@/lib/events';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
@@ -144,6 +145,13 @@ export async function POST(request: NextRequest) {
       detail: `Uploaded tally photo for station ${station.psCode}`,
       metadata: { stationId: resolvedStationId, photoUrl },
     });
+
+    // Notify connected admin/officer clients so tally photo galleries refresh instantly
+    broadcastEvent('results:submitted', {
+      stationId: resolvedStationId,
+      stationCode: station.psCode,
+      type: 'tally_photo',
+    }, { targetRoles: ['ADMIN', 'OFFICER'] });
 
     return NextResponse.json(photo, { status: 201 });
   } catch (error) {

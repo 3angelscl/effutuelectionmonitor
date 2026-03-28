@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { useSession } from 'next-auth/react';
+import { useEventStream } from '@/hooks/useEventStream';
 import Card from '@/components/ui/Card';
 import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
@@ -35,14 +36,25 @@ export default function AgentChatPage() {
   const { data: convData, mutate: mutateConvos } = useSWR<{ conversations: Conversation[] }>(
     '/api/chat',
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 60000 } // 60s fallback; SSE handles instant delivery
   );
 
   const { data: msgData, mutate: mutateMessages } = useSWR<{ messages: ChatMsg[] }>(
     selectedUserId ? `/api/chat?with=${selectedUserId}` : null,
     fetcher,
-    { refreshInterval: 3000 }
+    { refreshInterval: 60000 }
   );
+
+  // Real-time chat updates via SSE — revalidate when a new message arrives
+  useEventStream({
+    onEvent: (event) => {
+      if (event.type === 'chat:message') {
+        mutateConvos();
+        mutateMessages();
+      }
+    },
+    autoRevalidate: false, // We handle revalidation manually above
+  });
 
   const conversations = convData?.conversations || [];
   const messages = msgData?.messages || [];

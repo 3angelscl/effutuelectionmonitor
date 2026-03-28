@@ -2,6 +2,13 @@
  * Simple in-memory rate limiter.
  * Tracks requests per key (e.g. IP or email) within a sliding window.
  *
+ * ⚠️  SINGLE-PROCESS ONLY — counters are stored in Node.js heap memory.
+ *     In a multi-process deployment (PM2 cluster, Kubernetes replicas, etc.)
+ *     each process maintains independent counters, so a client can multiply
+ *     their effective rate by the number of running processes.
+ *     For horizontally-scaled production use, replace with a Redis-backed
+ *     implementation (e.g. @upstash/ratelimit with a Lua sliding-window script).
+ *
  * Usage:
  *   const limiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5 });
  *   const { success } = limiter.check(key);

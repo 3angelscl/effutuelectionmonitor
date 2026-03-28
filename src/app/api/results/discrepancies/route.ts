@@ -93,8 +93,9 @@ export const GET = apiHandler(async (request: Request) => {
       flags.push('OVERVOTE');
     }
 
-    // Result/Turnout mismatch: difference > 5 between votes cast and turnout count
-    if (Math.abs(totalVotes - voterTurnout) > 5) {
+    // Result/Turnout mismatch: configurable via DISCREPANCY_THRESHOLD env var (default 0 = zero tolerance)
+    const threshold = parseInt(process.env.DISCREPANCY_THRESHOLD ?? '0', 10);
+    if (voterTurnout > 0 && Math.abs(totalVotes - voterTurnout) > threshold) {
       flags.push('RESULT_TURNOUT_MISMATCH');
     }
 

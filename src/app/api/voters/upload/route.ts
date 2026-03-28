@@ -21,8 +21,29 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: 'buffer' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    // Validate magic bytes before handing to XLSX parser.
+    // XLSX is a ZIP (50 4B 03 04); legacy XLS is OLE2 (D0 CF 11 E0).
+    // Reject anything that doesn't match to prevent parser exploits.
+    const isXlsx = buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
+    const isXls  = buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
+    if (!isXlsx && !isXls) {
+      return NextResponse.json(
+        { error: 'Invalid file format. Please upload an .xlsx or .xls spreadsheet.' },
+        { status: 400 },
+      );
+    }
+
+    let workbook: XLSX.WorkBook;
+    try {
+      workbook = XLSX.read(buffer, { type: 'buffer' });
+    } catch {
+      return NextResponse.json(
+        { error: 'Could not parse spreadsheet. The file may be corrupted.' },
+        { status: 400 },
+      );
+    }
+    const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
 
     if (rows.length === 0) {

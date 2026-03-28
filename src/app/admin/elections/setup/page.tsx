@@ -54,6 +54,7 @@ interface AllElection {
 function AllElectionsList() {
   const [elections, setElections] = useState<AllElection[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/elections')
@@ -62,13 +63,13 @@ function AllElectionsList() {
       .catch(() => {});
   }, [refreshKey]);
 
-  const handleArchive = async (id: string, name: string) => {
-    if (!confirm(`Archive "${name}"? This will mark it as COMPLETED and move it to Election Archives.`)) return;
+  const handleArchive = async (id: string) => {
     await fetch('/api/elections', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'COMPLETED' }),
     });
+    setArchiveConfirmId(null);
     setRefreshKey((k) => k + 1);
   };
 
@@ -146,14 +147,28 @@ function AllElectionsList() {
                         </button>
                       )}
                       {el.status !== 'COMPLETED' && (
-                        <button
-                          onClick={() => handleArchive(el.id, el.name)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                          title="Archive election"
-                        >
-                          <ArchiveBoxArrowDownIcon className="h-3.5 w-3.5" />
-                          Archive
-                        </button>
+                        archiveConfirmId === el.id ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-orange-700 font-medium">Archive?</span>
+                            <button
+                              onClick={() => handleArchive(el.id)}
+                              className="px-2 py-1 text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg transition-colors"
+                            >Yes</button>
+                            <button
+                              onClick={() => setArchiveConfirmId(null)}
+                              className="px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                            >No</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setArchiveConfirmId(el.id)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Archive election"
+                          >
+                            <ArchiveBoxArrowDownIcon className="h-3.5 w-3.5" />
+                            Archive
+                          </button>
+                        )
                       )}
                       {el.status === 'COMPLETED' && (
                         <span className="text-xs text-gray-400 italic">Archived</span>
