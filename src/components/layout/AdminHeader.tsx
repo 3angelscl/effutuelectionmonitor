@@ -111,6 +111,7 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
               <input
                 type="text"
                 placeholder="Search station or voter..."
+                aria-label="Search station or voter"
                 className="pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               />
             </div>
@@ -122,6 +123,7 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
               <button
                 onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
                 className="p-2 text-gray-400 hover:text-gray-600 relative"
+                aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
               >
                 <BellIcon className="h-5 w-5" />
                 {unreadCount > 0 && (

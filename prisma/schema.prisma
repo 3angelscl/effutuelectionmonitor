@@ -34,6 +34,9 @@ model User {
   checkIns          AgentCheckIn[]
   incidents         Incident[]
   tallyPhotos       TallyPhoto[]
+
+  @@index([role])
+  @@index([deletedAt])
 }
 
 model PasswordReset {
@@ -83,6 +86,9 @@ model Election {
   favCandidate1Id String?
   favCandidate2Id String?
   snapshots  TurnoutSnapshot[]
+
+  @@index([isActive])
+  @@index([status])
 }
 
 model PollingStation {
@@ -146,7 +152,9 @@ model VoterTurnout {
 
   @@unique([voterId, electionId])
   @@index([electionId])
+  @@index([electionId, hasVoted])
   @@index([voterId])
+  @@index([markedById])
 }
 
 model Candidate {
@@ -189,6 +197,8 @@ model ElectionResult {
   @@unique([stationId, candidateId, electionId])
   @@index([electionId])
   @@index([approvalStatus])
+  @@index([approvalStatus, createdAt])
+  @@index([submittedById])
 }
 
 model ActivityLog {
@@ -203,6 +213,7 @@ model ActivityLog {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([type])
   @@index([createdAt])
   @@index([userId, createdAt])
 }
@@ -220,6 +231,7 @@ model ChatMessage {
 
   @@index([senderId])
   @@index([receiverId])
+  @@index([receiverId, isRead])
   @@index([createdAt])
   @@index([senderId, receiverId])
 }
@@ -237,6 +249,7 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, isRead])
   @@index([createdAt])
 }
 
@@ -262,6 +275,7 @@ model Incident {
   @@index([userId])
   @@index([stationId])
   @@index([status])
+  @@index([severity, status])
   @@index([createdAt])
 }
 
@@ -278,6 +292,7 @@ model TallyPhoto {
 
   @@index([stationId])
   @@index([userId])
+  @@index([createdAt])
 }
 
 model TurnoutSnapshot {

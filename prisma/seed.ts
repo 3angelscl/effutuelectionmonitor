@@ -372,11 +372,7 @@ async function main() {
   console.log(`${chatMessages.length} chat messages created`);
 
   console.log('\nSeed complete!');
-  console.log('\nLogin credentials:');
-  console.log('Admin:   admin@effutu.gov.gh / admin123');
-  console.log('Agent:   kwesi@effutu.gov.gh / agent123');
-  console.log('Officer: officer@effutu.gov.gh / officer123');
-  console.log('Viewer:  viewer@effutu.gov.gh / viewer123');
+  console.log('Default user accounts have been created. See prisma/seed.ts for credentials.');
 }
 
 main()

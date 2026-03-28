@@ -70,7 +70,7 @@ export async function GET() {
     for (const election of trends) {
       for (const cv of election.candidateVotes) {
         if (!partyMap[cv.party]) {
-          partyMap[cv.party] = { name: cv.party, color: cv.color, elections: [] };
+          partyMap[cv.party] = { name: cv.party, color: cv.color || '#3B82F6', elections: [] };
         }
         partyMap[cv.party].elections.push({
           electionId: election.id,

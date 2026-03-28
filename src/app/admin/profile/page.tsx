@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -63,6 +63,15 @@ export default function ProfilePage() {
   const [photo, setPhoto] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Create and auto-revoke object URL to prevent memory leaks
+  const photoPreviewUrl = useMemo(() => {
+    if (!photoFile) return null;
+    return URL.createObjectURL(photoFile);
+  }, [photoFile]);
+  useEffect(() => {
+    return () => { if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl); };
+  }, [photoPreviewUrl]);
 
   // Password change
   const [pwMode, setPwMode] = useState(false);
@@ -158,7 +167,7 @@ export default function ProfilePage() {
     AGENT: 'text-blue-700 bg-blue-50 border-blue-200',
   };
 
-  const previewUrl = photoFile ? URL.createObjectURL(photoFile) : photo;
+  const previewUrl = photoPreviewUrl || photo;
 
   return (
     <div className="flex-1">

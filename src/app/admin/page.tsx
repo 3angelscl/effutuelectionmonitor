@@ -3,6 +3,7 @@
 import { lazy, Suspense } from 'react';
 import { usePollingData } from '@/hooks/usePolling';
 import { DashboardStats } from '@/types';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import AdminHeader from '@/components/layout/AdminHeader';
 import StatCard from '@/components/ui/StatCard';
 import Card from '@/components/ui/Card';
@@ -293,7 +294,7 @@ export default function AdminDashboard() {
                   </div>
                   <ProgressBar
                     value={candidate.percentage}
-                    color={`bg-[${candidate.color}]`}
+                    color={candidate.color}
                     height="h-2.5"
                   />
                 </div>
@@ -306,9 +307,11 @@ export default function AdminDashboard() {
 
           {/* Geographic Distribution - Heatmap */}
           <Card>
+            <ErrorBoundary fallback={<div className="h-80 flex items-center justify-center text-sm text-gray-400">Failed to load heatmap</div>}>
             <Suspense fallback={<div className="h-80 bg-gray-100 rounded-lg animate-pulse" />}>
               <TurnoutHeatmap stations={stats.stations} />
             </Suspense>
+            </ErrorBoundary>
           </Card>
 
         </div>
@@ -316,9 +319,11 @@ export default function AdminDashboard() {
         {/* Turnout Trend */}
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Turnout Trend</h3>
+          <ErrorBoundary fallback={<div className="h-[300px] flex items-center justify-center text-sm text-gray-400">Failed to load chart</div>}>
           <Suspense fallback={<div className="h-[300px] bg-gray-100 rounded-lg animate-pulse" />}>
             <TurnoutChart data={Array.isArray(snapshots) ? snapshots : []} />
           </Suspense>
+          </ErrorBoundary>
         </Card>
 
         {/* Polling Station Summary - Full Width */}

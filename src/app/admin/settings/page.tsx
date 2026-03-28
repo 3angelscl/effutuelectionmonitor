@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -25,6 +25,15 @@ export default function SettingsPage() {
   const [photo, setPhoto] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Create and auto-revoke object URL to prevent memory leaks
+  const photoPreviewUrl = useMemo(() => {
+    if (!photoFile) return null;
+    return URL.createObjectURL(photoFile);
+  }, [photoFile]);
+  useEffect(() => {
+    return () => { if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl); };
+  }, [photoPreviewUrl]);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -256,7 +265,7 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-4">
                       {photo || photoFile ? (
                         <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200">
-                          <img src={photoFile ? URL.createObjectURL(photoFile) : photo} alt="Preview" className="w-full h-full object-cover" />
+                          <img src={photoPreviewUrl || photo} alt="Preview" className="w-full h-full object-cover" />
                         </div>
                       ) : (
                         <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">

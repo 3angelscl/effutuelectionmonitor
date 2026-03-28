@@ -79,7 +79,6 @@ export default function CandidateManagement() {
       ? null 
       : candidateId;
       
-    console.log('Setting favorite:', { candidateId, slot, newValue, electionId: activeElection.id });
     try {
       const res = await fetch('/api/elections', {
         method: 'PUT',
@@ -89,7 +88,6 @@ export default function CandidateManagement() {
           [slot === 1 ? 'favCandidate1Id' : 'favCandidate2Id']: newValue,
         }),
       });
-      console.log('Response status:', res.status);
       if (res.ok) {
         mutateElections();
       }
