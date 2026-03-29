@@ -96,16 +96,23 @@ export default function TurnoutHeatmap({ stations }: TurnoutHeatmapProps) {
           `);
       });
     } else {
-      // Cluster mode — individual markers
-      const icon = L.icon({
-        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-      });
-
+      // Cluster mode — styled div icons (no external image dependency)
       geoStations.forEach((station) => {
+        const turnout = station.turnoutPercentage;
+        const color = turnout > 75 ? '#1d4ed8' : turnout > 50 ? '#3b82f6' : '#93c5fd';
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="
+            width:28px;height:28px;border-radius:50%;
+            background:${color};border:3px solid #fff;
+            box-shadow:0 2px 6px rgba(0,0,0,0.35);
+            display:flex;align-items:center;justify-content:center;
+            color:#fff;font-size:10px;font-weight:700;font-family:system-ui;
+          ">${station.turnoutPercentage > 0 ? station.turnoutPercentage + '%' : ''}</div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+
         L.marker([station.latitude!, station.longitude!], { icon })
           .addTo(map)
           .bindPopup(`
