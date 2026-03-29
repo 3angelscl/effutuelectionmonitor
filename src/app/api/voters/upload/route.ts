@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(['ADMIN', 'OFFICER']);
+    await requireRole('ADMIN');
 
     const formData = await request.formData();
     const file = formData.get('file') as File;

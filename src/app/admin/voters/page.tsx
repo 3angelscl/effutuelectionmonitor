@@ -50,7 +50,7 @@ export default function VoterManagement() {
   const searchParams = useSearchParams();
   const userRole = (session?.user as { role?: string })?.role;
   const canModify = userRole === 'ADMIN';
-  const canUpload = userRole === 'ADMIN' || userRole === 'OFFICER';
+  const canUpload = userRole === 'ADMIN';
 
   // Support search from URL params (e.g. navigating from header search)
   const initialSearch = searchParams.get('search') || '';
