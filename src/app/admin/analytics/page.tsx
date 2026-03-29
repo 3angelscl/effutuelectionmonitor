@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
     <div className="flex-1">
       <AdminHeader title="Trend Analytics" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Trend Analytics</h2>
           <p className="text-sm text-gray-500 mt-1">Cross-election comparison and historical performance trends</p>

@@ -26,12 +26,15 @@ export default function ElectionSelector() {
   const userRole = (session?.user as { role?: string })?.role || 'VIEWER';
   const canManage = userRole === 'ADMIN';
 
-  const { data: elections, mutate } = useSWR<Election[]>('/api/elections', fetcher);
+  const { data: electionsRaw, mutate } = useSWR('/api/elections', fetcher);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', date: '' });
   const [saving, setSaving] = useState(false);
 
-  const activeElection = (elections || []).find((e) => e.isActive);
+  // Guard against non-array responses (e.g. a 401 { error: "..." } during hydration)
+  const elections: Election[] = Array.isArray(electionsRaw) ? electionsRaw : [];
+
+  const activeElection = elections.find((e) => e.isActive);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,10 +100,10 @@ export default function ElectionSelector() {
       {canManage && <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="Manage Elections" size="lg">
         <div className="space-y-4">
           {/* Existing elections */}
-          {(elections || []).length > 0 && (
+          {elections.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-bold text-gray-500 uppercase">Existing Elections</p>
-              {(elections || []).map((el) => (
+              {elections.map((el) => (
                 <div
                   key={el.id}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"

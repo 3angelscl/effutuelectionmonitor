@@ -129,10 +129,10 @@ export default function AgentActivityPage() {
     return (
       <div className="flex-1">
         <AdminHeader title="Agent Activity" />
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="animate-pulse space-y-6">
             <div className="h-24 bg-gray-200 rounded-xl" />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-gray-200 rounded-xl" />)}
             </div>
             <div className="h-96 bg-gray-200 rounded-xl" />
@@ -163,7 +163,7 @@ export default function AgentActivityPage() {
     <div className="flex-1">
       <AdminHeader title="Agent Activity" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm">
           <a href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</a>
@@ -299,92 +299,74 @@ export default function AgentActivityPage() {
             </div>
           ) : (
             <div className="relative">
-              {/* Timeline center line */}
-              <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gray-200 -translate-x-1/2" />
+              {/* Timeline center line - desktop only */}
+              <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-0.5 bg-gray-200 -translate-x-1/2" />
+              {/* Timeline left line - mobile only */}
+              <div className="md:hidden absolute left-5 top-0 bottom-0 w-0.5 bg-gray-200" />
 
-              <div className="space-y-8">
+              <div className="space-y-6 md:space-y-8">
                 {logs.map((log, idx) => {
                   const { icon: IconComponent, bg } = getLogIcon(log.type);
                   const style = getLogStyle(log.type);
                   const isLeft = idx % 2 === 1;
 
+                  const cardContent = (
+                    <div
+                      className={`p-4 rounded-xl text-sm ${
+                        style === 'alert'
+                          ? 'bg-red-50 border border-red-100'
+                          : style === 'success'
+                          ? 'bg-green-50 border border-green-100'
+                          : 'bg-gray-50 border border-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`font-semibold ${
+                          style === 'alert' ? 'text-red-600' : style === 'success' ? 'text-green-700' : 'text-gray-900'
+                        }`}>
+                          {log.title}
+                        </p>
+                        <span className={`text-xs shrink-0 ${
+                          style === 'alert' ? 'text-red-400' : style === 'success' ? 'text-green-500' : 'text-gray-400'
+                        }`}>
+                          {formatTime(log.createdAt)}
+                        </span>
+                      </div>
+                      {log.detail && (
+                        <p className={`mt-1 text-xs ${
+                          style === 'alert' ? 'text-red-500' : style === 'success' ? 'text-green-600' : 'text-gray-500'
+                        }`}>
+                          {log.detail}
+                        </p>
+                      )}
+                    </div>
+                  );
+
                   return (
-                    <div key={log.id} className="relative flex items-start">
-                      {/* Left side content */}
-                      <div className="w-[calc(50%-24px)] pr-4">
-                        {isLeft && (
-                          <div
-                            className={`p-4 rounded-xl text-sm ${
-                              style === 'alert'
-                                ? 'bg-red-50 border border-red-100'
-                                : style === 'success'
-                                ? 'bg-green-50 border border-green-100'
-                                : 'bg-gray-50 border border-gray-100'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className={`font-semibold ${
-                                style === 'alert' ? 'text-red-600' : style === 'success' ? 'text-green-700' : 'text-gray-900'
-                              }`}>
-                                {log.title}
-                              </p>
-                              <span className={`text-xs shrink-0 ${
-                                style === 'alert' ? 'text-red-400' : style === 'success' ? 'text-green-500' : 'text-gray-400'
-                              }`}>
-                                {formatTime(log.createdAt)}
-                              </span>
-                            </div>
-                            {log.detail && (
-                              <p className={`mt-1 text-xs ${
-                                style === 'alert' ? 'text-red-500' : style === 'success' ? 'text-green-600' : 'text-gray-500'
-                              }`}>
-                                {log.detail}
-                              </p>
-                            )}
+                    <div key={log.id} className="relative">
+                      {/* Mobile layout: icon on left, card to the right */}
+                      <div className="flex items-start gap-3 md:hidden">
+                        <div className="relative z-10 flex-shrink-0">
+                          <div className={`w-10 h-10 ${bg} rounded-full flex items-center justify-center shadow-md`}>
+                            <IconComponent className="h-5 w-5 text-white" />
                           </div>
-                        )}
-                      </div>
-
-                      {/* Center icon */}
-                      <div className="relative z-10 flex-shrink-0">
-                        <div className={`w-10 h-10 ${bg} rounded-full flex items-center justify-center shadow-md`}>
-                          <IconComponent className="h-5 w-5 text-white" />
                         </div>
+                        <div className="flex-1 pt-1">{cardContent}</div>
                       </div>
 
-                      {/* Right side content */}
-                      <div className="w-[calc(50%-24px)] pl-4">
-                        {!isLeft && (
-                          <div
-                            className={`p-4 rounded-xl text-sm ${
-                              style === 'alert'
-                                ? 'bg-red-50 border border-red-100'
-                                : style === 'success'
-                                ? 'bg-green-50 border border-green-100'
-                                : 'bg-gray-50 border border-gray-100'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <p className={`font-semibold ${
-                                style === 'alert' ? 'text-red-600' : style === 'success' ? 'text-green-700' : 'text-gray-900'
-                              }`}>
-                                {log.title}
-                              </p>
-                              <span className={`text-xs shrink-0 ${
-                                style === 'alert' ? 'text-red-400' : style === 'success' ? 'text-green-500' : 'text-gray-400'
-                              }`}>
-                                {formatTime(log.createdAt)}
-                              </span>
-                            </div>
-                            {log.detail && (
-                              <p className={`mt-1 text-xs ${
-                                style === 'alert' ? 'text-red-500' : style === 'success' ? 'text-green-600' : 'text-gray-500'
-                              }`}>
-                                {log.detail}
-                              </p>
-                            )}
+                      {/* Desktop layout: alternating left/right */}
+                      <div className="hidden md:flex items-start">
+                        <div className="w-[calc(50%-24px)] pr-4">
+                          {isLeft && cardContent}
+                        </div>
+                        <div className="relative z-10 flex-shrink-0">
+                          <div className={`w-10 h-10 ${bg} rounded-full flex items-center justify-center shadow-md`}>
+                            <IconComponent className="h-5 w-5 text-white" />
                           </div>
-                        )}
+                        </div>
+                        <div className="w-[calc(50%-24px)] pl-4">
+                          {!isLeft && cardContent}
+                        </div>
                       </div>
                     </div>
                   );

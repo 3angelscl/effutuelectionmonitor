@@ -270,9 +270,9 @@ export default function PollingStationsPage() {
     <div className="flex-1">
       <AdminHeader title="Polling Stations" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             label="Total Stations"
             value={String(allStations.length)}
@@ -304,7 +304,7 @@ export default function PollingStationsPage() {
               placeholder="Search by PS Code, Name, or Agent..."
               value={search}
               onChange={(e) => changeSearch(e.target.value)}
-              className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-80 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-full md:w-80 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -333,7 +333,7 @@ export default function PollingStationsPage() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg">
           {filterTabs.map((tab) => (
             <button
               key={tab.key}

@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { MagnifyingGlassIcon, BellIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, BellIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightStartOnRectangleIcon, Bars3Icon } from '@heroicons/react/24/outline';
+import { useAdminSidebar } from '@/contexts/AdminSidebarContext';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -52,6 +53,7 @@ function getNotifIcon(type: string) {
 export default function AdminHeader({ title }: AdminHeaderProps) {
   const { data: session } = useSession();
   const router = useRouter();
+  const { open: openSidebar } = useAdminSidebar();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,16 +153,24 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
   const isViewer = userRole === 'VIEWER';
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-between">
-        <div>
-          {title && <h1 className="text-lg font-semibold text-gray-900">{title}</h1>}
+    <header className="bg-white border-b border-gray-200 px-4 md:px-6 py-3 md:py-4">
+      <div className="flex items-center justify-between gap-3">
+        {/* Mobile: hamburger; Desktop: page title */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={openSidebar}
+            className="md:hidden p-1.5 -ml-1 text-gray-500 hover:text-gray-700 rounded-lg"
+            aria-label="Open menu"
+          >
+            <Bars3Icon className="h-6 w-6" />
+          </button>
+          {title && <h1 className="text-base md:text-lg font-semibold text-gray-900">{title}</h1>}
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* Search — hidden for viewers */}
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* Search — hidden for viewers and hidden on mobile */}
           {!isViewer && (
-            <div className="relative" ref={searchRef}>
+            <div className="relative hidden md:block" ref={searchRef}>
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"

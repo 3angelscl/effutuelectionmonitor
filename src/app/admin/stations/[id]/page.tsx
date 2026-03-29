@@ -108,10 +108,10 @@ export default function StationDetailPage() {
     return (
       <div className="flex-1">
         <AdminHeader title="Polling Stations" />
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="animate-pulse space-y-6">
             <div className="h-28 bg-gray-200 rounded-xl" />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-gray-200 rounded-xl" />)}
             </div>
             <div className="h-96 bg-gray-200 rounded-xl" />
@@ -128,7 +128,7 @@ export default function StationDetailPage() {
     <div className="flex-1">
       <AdminHeader title="Polling Stations" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm">
           <a href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</a>
@@ -225,8 +225,8 @@ export default function StationDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Voter Registry - 2 cols */}
           <Card padding={false} className="lg:col-span-2">
-            <div className="p-6 pb-4">
-              <div className="flex items-center justify-between mb-1">
+            <div className="p-4 md:p-6 pb-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Voter Registry</h3>
                   <p className="text-xs text-gray-500 mt-0.5">Showing recent registrations and status</p>

@@ -146,8 +146,8 @@ export default function ElectionArchivePage() {
     <div className="flex-1">
       <AdminHeader title="Election Archives" />
 
-      <div className="p-6 space-y-6">
-        <div className="flex items-start justify-between">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Election Archives</h2>
             <p className="text-sm text-gray-500 mt-1">Historical records of all completed elections</p>

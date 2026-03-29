@@ -161,10 +161,10 @@ export default function AdminDashboard() {
     return (
       <div className="flex-1">
         <AdminHeader title="Constituency Overview" />
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-200 rounded w-64" />
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[...Array(4)].map((_, i) => (
                 <div key={i} className="h-32 bg-gray-200 rounded-xl" />
               ))}
@@ -179,10 +179,10 @@ export default function AdminDashboard() {
     <div className="flex-1">
       <AdminHeader title="Constituency Overview" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Title */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Effutu Statistics</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Effutu Statistics</h2>
           <p className="text-gray-500 text-sm mt-1">
             {stats.election ? `Real-time monitoring for ${stats.election.name}` : 'No active election selected'}
           </p>
@@ -328,7 +328,7 @@ export default function AdminDashboard() {
 
         {/* Polling Station Summary - Full Width */}
         <Card padding={false}>
-            <div className="p-6 pb-3">
+            <div className="p-4 md:p-6 pb-3">
               <h3 className="text-lg font-semibold text-gray-900">Polling Station Summary</h3>
             </div>
             <div className="overflow-x-auto">

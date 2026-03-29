@@ -183,8 +183,8 @@ export default function UserManagement() {
     <div className="flex-1">
       <AdminHeader title="User Management" />
 
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900">System Users</h2>
             <p className="text-sm text-gray-500 mt-1">Manage admin, officer, and viewer accounts</p>
@@ -195,7 +195,8 @@ export default function UserManagement() {
         </div>
 
         <Card padding={false}>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">User</th>
@@ -261,6 +262,7 @@ export default function UserManagement() {
               )}
             </tbody>
           </table>
+          </div>
         </Card>
       </div>
 

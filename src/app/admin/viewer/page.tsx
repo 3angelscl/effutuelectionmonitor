@@ -104,10 +104,10 @@ export default function AdminViewerPage() {
     return (
       <div className="flex-1">
         <AdminHeader title="Live Viewer" />
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="animate-pulse space-y-6">
-            <div className="h-12 bg-gray-200 rounded w-96" />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="h-12 bg-gray-200 rounded w-full max-w-sm" />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => <div key={i} className="h-32 bg-gray-200 rounded-xl" />)}
             </div>
           </div>
@@ -124,25 +124,25 @@ export default function AdminViewerPage() {
     <div className="flex-1">
       <AdminHeader title="Live Viewer" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
               <SignalIcon className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 className="text-lg md:text-xl font-bold text-gray-900">
                 {stats.election ? stats.election.name : 'Election'} — Live Feed
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 hidden sm:block">
                 Real-time voter turnout and results aggregation dashboard
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 self-start sm:self-auto">
             <Badge variant="success" dot>Live</Badge>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 hidden md:inline">
               Last refreshed: {lastRefreshed.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
             <button
@@ -190,7 +190,8 @@ export default function AdminViewerPage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="flex bg-gray-100 rounded-lg p-1 w-fit">
+        <div className="overflow-x-auto -mx-1">
+        <div className="flex bg-gray-100 rounded-lg p-1 w-fit min-w-full sm:min-w-0">
           {[
             { key: 'overview' as const, label: 'Overview' },
             { key: 'regional' as const, label: 'Regional Breakdown' },
@@ -209,6 +210,7 @@ export default function AdminViewerPage() {
               {tab.label}
             </button>
           ))}
+        </div>
         </div>
 
         {/* Stat Cards — always visible */}

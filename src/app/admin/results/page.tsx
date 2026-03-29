@@ -269,10 +269,10 @@ export default function ElectionResultsPage() {
     return (
       <div className="flex-1">
         <AdminHeader title="Election Results" />
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-200 rounded w-64" />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="h-32 bg-gray-200 rounded-xl" />
               ))}
@@ -287,7 +287,7 @@ export default function ElectionResultsPage() {
     <div className="flex-1">
       <AdminHeader title="Election Results" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Discrepancy detection */}
         <DiscrepancySection />
 

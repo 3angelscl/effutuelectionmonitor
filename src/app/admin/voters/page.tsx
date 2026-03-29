@@ -303,10 +303,10 @@ export default function VoterManagement() {
     <div className="flex-1">
       <AdminHeader title="Voters Register" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-6">
         {/* Actions Bar */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center flex-wrap gap-3">
             {/* Search */}
             <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -315,7 +315,7 @@ export default function VoterManagement() {
                 placeholder="Search by voter ID or name..."
                 value={searchInput}
                 onChange={handleSearch}
-                className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               />
             </div>
 

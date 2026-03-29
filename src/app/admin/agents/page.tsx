@@ -287,9 +287,9 @@ export default function AgentManagement() {
     <div className="flex-1">
       <AdminHeader title="Polling Agents Management" />
 
-      <div className="p-6 space-y-6">
+      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Stat Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
             label="Total Agents"
             value={String(agents.length)}
@@ -309,7 +309,7 @@ export default function AgentManagement() {
 
         {/* Action Buttons */}
         {canModify && (
-          <div className="flex justify-end gap-3">
+          <div className="flex flex-wrap justify-end gap-3">
             <Button
               variant="outline"
               icon={<ArrowsRightLeftIcon className="h-4 w-4" />}

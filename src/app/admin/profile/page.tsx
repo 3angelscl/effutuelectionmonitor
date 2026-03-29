@@ -173,7 +173,7 @@ export default function ProfilePage() {
     <div className="flex-1">
       <AdminHeader title="My Profile" />
 
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4 md:space-y-6">
 
         {/* Profile Header Card */}
         <Card>

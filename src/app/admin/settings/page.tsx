@@ -218,7 +218,7 @@ export default function SettingsPage() {
     <div className="flex-1">
       <AdminHeader title="Settings" />
 
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <div className="max-w-3xl mx-auto">
           {/* Tabs */}
           <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-6">

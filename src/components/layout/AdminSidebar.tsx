@@ -22,6 +22,7 @@ import {
   ArchiveBoxIcon,
   ArrowTrendingUpIcon,
   PhotoIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { classNames } from '@/lib/utils';
 import ElectionSelector from './ElectionSelector';
@@ -47,7 +48,14 @@ const navigation = [
   { name: 'Settings', href: '/admin/settings', icon: Cog6ToothIcon },
 ] as const;
 
-export default function AdminSidebar() {
+interface AdminSidebarProps {
+  /** Called when a nav link is clicked — used to close the mobile drawer */
+  onClose?: () => void;
+  /** Show an X close button in the header — used in the mobile drawer */
+  showCloseButton?: boolean;
+}
+
+export default function AdminSidebar({ onClose, showCloseButton }: AdminSidebarProps = {}) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const isLoading = status === 'loading';
@@ -65,16 +73,25 @@ export default function AdminSidebar() {
       });
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 min-h-screen flex flex-col">
+    <div className="flex flex-col w-full h-full bg-white">
       {/* Logo */}
-      <div className="p-6 border-b border-gray-100">
-        <Link href={homeHref} className="flex items-center gap-3">
-          <Image src="/uploads/logo.jpg" alt="Logo" width={36} height={36} className="rounded-lg object-cover w-9 h-9" />
-          <div>
+      <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <Link href={homeHref} onClick={onClose} className="flex items-center gap-3 min-w-0">
+          <Image src="/uploads/logo.jpg" alt="Logo" width={36} height={36} className="rounded-lg object-cover w-9 h-9 shrink-0" />
+          <div className="min-w-0">
             <h1 className="text-sm font-bold text-gray-900">Effutu Monitor</h1>
-            <p className="text-xs text-gray-500">{roleLabel}</p>
+            <p className="text-xs text-gray-500 truncate">{roleLabel}</p>
           </div>
         </Link>
+        {showCloseButton && (
+          <button
+            onClick={onClose}
+            className="p-2 -mr-2 text-gray-400 hover:text-gray-600 rounded-lg shrink-0"
+            aria-label="Close menu"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Election Selector */}
@@ -91,6 +108,7 @@ export default function AdminSidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onClose}
               className={classNames(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isActive
@@ -107,7 +125,7 @@ export default function AdminSidebar() {
 
       {/* User Info + Logout */}
       <div className="p-4 border-t border-gray-100">
-        <Link href="/admin/profile" className="flex items-center gap-3 px-3 py-2 mb-1 rounded-lg hover:bg-gray-50 transition-colors group">
+        <Link href="/admin/profile" onClick={onClose} className="flex items-center gap-3 px-3 py-2 mb-1 rounded-lg hover:bg-gray-50 transition-colors group">
           {(session?.user as { photo?: string })?.photo ? (
             <img
               src={(session?.user as { photo?: string }).photo}
@@ -136,6 +154,6 @@ export default function AdminSidebar() {
           Logout
         </button>
       </div>
-    </aside>
+    </div>
   );
 }

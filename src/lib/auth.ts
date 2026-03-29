@@ -99,10 +99,11 @@ export const authOptions: NextAuthOptions = {
           select: { sessionVersion: true, deletedAt: true },
         });
         // Invalidate if: user soft-deleted or sessionVersion bumped since sign-in
+        const tokenVersion = (token.sessionVersion as number | undefined) ?? 1;
         if (
           !dbUser ||
           dbUser.deletedAt !== null ||
-          (dbUser.sessionVersion ?? 1) !== (token.sessionVersion as number)
+          (dbUser.sessionVersion ?? 1) !== tokenVersion
         ) {
           return {}; // Empty token forces sign-out on next request
         }
