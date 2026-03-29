@@ -64,7 +64,7 @@ export default function AgentManagement() {
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', phone: '', photo: '' });
+  const [editForm, setEditForm] = useState({ name: '', phone: '', photo: '', newPassword: '' });
   const [editAgent, setEditAgent] = useState<UserData | null>(null);
 
   // Bulk assign state
@@ -138,7 +138,7 @@ export default function AgentManagement() {
   // --- Edit Agent ---
   const openEditModal = (agent: UserData) => {
     setEditAgent(agent);
-    setEditForm({ name: agent.name, phone: agent.phone || '', photo: agent.photo || '' });
+    setEditForm({ name: agent.name, phone: agent.phone || '', photo: agent.photo || '', newPassword: '' });
     setError('');
     setEditModalOpen(true);
   };
@@ -152,7 +152,7 @@ export default function AgentManagement() {
       const res = await fetch(`/api/users/${editAgent.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm),
+        body: JSON.stringify({ ...editForm, ...(editForm.newPassword ? { password: editForm.newPassword } : {}) }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -160,7 +160,7 @@ export default function AgentManagement() {
         return;
       }
       mutateUsers();
-      toast.success('Agent updated successfully');
+      toast.success(editForm.newPassword ? 'Agent updated and password reset' : 'Agent updated successfully');
       setEditModalOpen(false);
       setEditAgent(null);
     } catch {
@@ -673,7 +673,16 @@ export default function AgentManagement() {
               </div>
             </div>
           </div>
-          <div className="flex gap-3 justify-end pt-4">
+          <div className="border-t border-gray-100 pt-4">
+            <Input
+              label="New Password (leave blank to keep current)"
+              type="password"
+              value={editForm.newPassword}
+              onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
+              placeholder="Minimum 6 characters"
+            />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" type="button" onClick={() => setEditModalOpen(false)}>
               Cancel
             </Button>

@@ -39,7 +39,7 @@ export default function UserManagement() {
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<UserData | null>(null);
   const [editForm, setEditForm] = useState({
-    name: '', phone: '', role: '', photo: '', photoFile: null as File | null,
+    name: '', phone: '', role: '', photo: '', photoFile: null as File | null, newPassword: '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -101,7 +101,7 @@ export default function UserManagement() {
   // ── Edit User ──
   const openEdit = (user: UserData) => {
     setEditTarget(user);
-    setEditForm({ name: user.name, phone: user.phone || '', role: user.role, photo: user.photo || '', photoFile: null });
+    setEditForm({ name: user.name, phone: user.phone || '', role: user.role, photo: user.photo || '', photoFile: null, newPassword: '' });
     setError('');
     setEditOpen(true);
   };
@@ -133,6 +133,7 @@ export default function UserManagement() {
         }
       }
       if ((finalPhoto || null) !== (editTarget.photo || null)) payload.photo = finalPhoto || null;
+      if (editForm.newPassword) payload.password = editForm.newPassword;
 
       if (Object.keys(payload).length === 0) {
         setEditOpen(false);
@@ -150,7 +151,7 @@ export default function UserManagement() {
         return;
       }
       mutate();
-      toast.success('User updated successfully');
+      toast.success(editForm.newPassword ? 'User updated and password reset' : 'User updated successfully');
       setEditOpen(false);
       setEditTarget(null);
     } catch {
@@ -395,7 +396,16 @@ export default function UserManagement() {
               <option value="ADMIN">Admin</option>
             </select>
           </div>
-          <div className="flex gap-3 justify-end pt-4">
+          <div className="border-t border-gray-100 pt-4">
+            <Input
+              label="New Password (leave blank to keep current)"
+              type="password"
+              value={editForm.newPassword}
+              onChange={(e) => setEditForm((f) => ({ ...f, newPassword: e.target.value }))}
+              placeholder="Minimum 6 characters"
+            />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" type="button" onClick={() => setEditOpen(false)}>
               Cancel
             </Button>

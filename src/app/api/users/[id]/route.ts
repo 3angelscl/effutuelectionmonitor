@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import bcrypt from 'bcryptjs';
 
 export async function DELETE(
   _request: NextRequest,
@@ -52,14 +53,20 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, phone, photo, role } = body;
+    const { name, phone, photo, role, password } = body;
 
-    const data: Record<string, string | null> = {};
+    const data: Record<string, string | null | number> = {};
     if (name !== undefined) data.name = name;
     if (phone !== undefined) data.phone = phone || null;
     if (photo !== undefined) data.photo = photo || null;
     if (role !== undefined && ['ADMIN', 'OFFICER', 'AGENT', 'VIEWER'].includes(role)) {
       data.role = role;
+    }
+    if (password !== undefined && password.length >= 6) {
+      data.password = await bcrypt.hash(password, 10);
+      // Bump sessionVersion to invalidate existing sessions for this user
+      const current = await prisma.user.findUnique({ where: { id }, select: { sessionVersion: true } });
+      data.sessionVersion = (current?.sessionVersion ?? 1) + 1;
     }
 
     if (Object.keys(data).length === 0) {
@@ -84,8 +91,8 @@ export async function PATCH(
       action: 'UPDATE',
       entity: 'User',
       entityId: id,
-      detail: `Updated user "${user.name}"`,
-      metadata: { updatedFields: Object.keys(data) },
+      detail: `Updated user "${user.name}"${data.password ? ' (password reset)' : ''}`,
+      metadata: { updatedFields: Object.keys(data).filter((k) => k !== 'password') },
     });
 
     return NextResponse.json(user);
