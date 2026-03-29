@@ -89,3 +89,40 @@ export function broadcastEvent(
     targetRoles: options?.targetRoles,
   });
 }
+
+// ── Server-side broadcast throttle ──────────────────────────────────────────
+// High-frequency events (e.g. turnout:updated) should not fan-out to all SSE
+// clients on every individual vote — that creates O(votes × viewers) server
+// work. Instead, throttle: only publish if the last publish for this key was
+// more than `intervalMs` ago. The DB write always happens; only the SSE fan-
+// out is suppressed between ticks.
+
+const globalForThrottle = globalThis as unknown as {
+  broadcastThrottleTimers: Map<string, number> | undefined;
+};
+if (!globalForThrottle.broadcastThrottleTimers) {
+  globalForThrottle.broadcastThrottleTimers = new Map();
+}
+const throttleTimers = globalForThrottle.broadcastThrottleTimers;
+
+/**
+ * Like broadcastEvent but at most once per `intervalMs` for a given `key`.
+ * Subsequent calls within the window are silently dropped — the last known
+ * DB state will be fetched when the next allowed broadcast fires (or when the
+ * client's background SWR poll runs).
+ */
+export function broadcastEventThrottled(
+  type: EventType,
+  payload?: Record<string, unknown>,
+  options?: { targetUserId?: string; targetRoles?: string[]; intervalMs?: number; key?: string },
+) {
+  const intervalMs = options?.intervalMs ?? 5000;
+  const key = `${type}:${options?.key ?? '_'}`;
+  const now = Date.now();
+  const last = throttleTimers.get(key) ?? 0;
+
+  if (now - last < intervalMs) return; // suppressed — within throttle window
+
+  throttleTimers.set(key, now);
+  broadcastEvent(type, payload, options);
+}

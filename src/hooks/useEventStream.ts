@@ -38,18 +38,22 @@ interface UseEventStreamOptions {
 
 /**
  * Map event types to SWR URL keys that should be revalidated.
+ * `debounceMs` > 0 coalesces rapid-fire events: the revalidation is
+ * scheduled once and reset on each new event, so 100 turnout events in
+ * 2 s produce exactly 1 API call after the burst settles.
+ * Events with debounceMs = 0 revalidate immediately (low-frequency).
  */
-const EVENT_TO_SWR_KEYS: Record<string, string[]> = {
-  'results:submitted': ['/api/stats', '/api/results'],
-  'turnout:updated': ['/api/stats', '/api/snapshots'],
-  'notification:new': ['/api/notifications'],
-  'chat:message': ['/api/chat'],
-  'incident:created': ['/api/incidents'],
-  'incident:updated': ['/api/incidents'],
-  'election:changed': ['/api/elections', '/api/elections/active', '/api/stats'],
-  'station:updated': ['/api/stations', '/api/stats'],
-  'agent:checkin': ['/api/agents/performance', '/api/agent/checkin'],
-  'stats:updated': ['/api/stats'],
+const EVENT_TO_SWR_KEYS: Record<string, { keys: string[]; debounceMs: number }> = {
+  'turnout:updated':   { keys: ['/api/stats', '/api/snapshots'],                        debounceMs: 3000 },
+  'results:submitted': { keys: ['/api/stats', '/api/results'],                          debounceMs: 2000 },
+  'stats:updated':     { keys: ['/api/stats'],                                          debounceMs: 2000 },
+  'station:updated':   { keys: ['/api/stations', '/api/stats'],                         debounceMs: 500  },
+  'notification:new':  { keys: ['/api/notifications'],                                  debounceMs: 0    },
+  'chat:message':      { keys: ['/api/chat'],                                           debounceMs: 0    },
+  'incident:created':  { keys: ['/api/incidents'],                                      debounceMs: 0    },
+  'incident:updated':  { keys: ['/api/incidents'],                                      debounceMs: 0    },
+  'election:changed':  { keys: ['/api/elections', '/api/elections/active', '/api/stats'], debounceMs: 0  },
+  'agent:checkin':     { keys: ['/api/agents/performance', '/api/agent/checkin'],        debounceMs: 0    },
 };
 
 export function useEventStream(options?: UseEventStreamOptions) {
@@ -59,6 +63,8 @@ export function useEventStream(options?: UseEventStreamOptions) {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const optionsRef = useRef(options);
+  // Per-event-type debounce timers — keyed by event type
+  const debounceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     optionsRef.current = options;
@@ -94,15 +100,32 @@ export function useEventStream(options?: UseEventStreamOptions) {
           optionsRef.current.onEvent(data);
         }
 
-        // Auto-revalidate relevant SWR keys
+        // Auto-revalidate relevant SWR keys (with per-type debouncing)
         if (autoRevalidate && data.type in EVENT_TO_SWR_KEYS) {
-          const keys = EVENT_TO_SWR_KEYS[data.type];
-          for (const key of keys) {
-            // Revalidate exact match and any key that starts with this prefix
-            globalMutate(
-              (k) => typeof k === 'string' && k.startsWith(key),
-              undefined,
-              { revalidate: true },
+          const { keys, debounceMs } = EVENT_TO_SWR_KEYS[data.type];
+
+          const flush = () => {
+            for (const key of keys) {
+              globalMutate(
+                (k) => typeof k === 'string' && k.startsWith(key),
+                undefined,
+                { revalidate: true },
+              );
+            }
+          };
+
+          if (debounceMs === 0) {
+            flush();
+          } else {
+            // Cancel any pending timer for this event type and reschedule
+            const existing = debounceTimers.current.get(data.type);
+            if (existing) clearTimeout(existing);
+            debounceTimers.current.set(
+              data.type,
+              setTimeout(() => {
+                debounceTimers.current.delete(data.type);
+                flush();
+              }, debounceMs),
             );
           }
         }
@@ -139,6 +162,9 @@ export function useEventStream(options?: UseEventStreamOptions) {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+      // Clear all pending debounce timers
+      for (const t of debounceTimers.current.values()) clearTimeout(t);
+      debounceTimers.current.clear();
     };
   }, [connect]);
 

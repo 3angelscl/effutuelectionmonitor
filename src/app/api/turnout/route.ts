@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
-import { broadcastEvent } from '@/lib/events';
+import { broadcastEventThrottled } from '@/lib/events';
 import { parseBody, turnoutMarkSchema, ValidationError } from '@/lib/validations';
 
 export async function PATCH(request: NextRequest) {
@@ -71,13 +71,12 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    // Broadcast turnout update event
-    broadcastEvent('turnout:updated', {
-      voterId: voter.id,
+    // Broadcast turnout update — throttled to once per 5 s per election to
+    // prevent O(votes × viewers) server fan-out under concurrent agent load.
+    broadcastEventThrottled('turnout:updated', {
       stationId: voter.stationId,
-      hasVoted,
       electionId: activeElection.id,
-    });
+    }, { intervalMs: 5000, key: activeElection.id });
 
     // Take turnout snapshot (throttled to every 15 min)
     const lastSnapshot = await prisma.turnoutSnapshot.findFirst({
