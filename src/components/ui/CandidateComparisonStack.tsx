@@ -62,7 +62,7 @@ export default function CandidateComparisonStack({ candidate1, candidate2, total
           </div>
         </div>
 
-        {/* Candidate 1 Segment */}
+        {/* Candidate 1 Segment — fills from left */}
         {candidate1 && (
           <div
             className="h-full transition-all duration-1000 ease-in-out relative flex items-center justify-center"
@@ -76,10 +76,18 @@ export default function CandidateComparisonStack({ candidate1, candidate2, total
           </div>
         )}
 
-        {/* Candidate 2 Segment */}
+        {/* Remaining Space (Other Candidates / Unaccounted) */}
+        {otherPercentage > 0 && (
+          <div
+            className="h-full bg-gray-200 transition-all duration-1000 flex-none"
+            style={{ width: `${otherPercentage}%` }}
+          />
+        )}
+
+        {/* Candidate 2 Segment — fills from right */}
         {candidate2 && (
           <div
-            className="h-full transition-all duration-1000 ease-in-out relative flex items-center justify-center border-l-2 border-white/10"
+            className="h-full transition-all duration-1000 ease-in-out relative flex items-center justify-center ml-auto"
             style={{ width: `${c2Percentage}%`, backgroundColor: candidate2.color }}
           >
             {c2Percentage >= 10 && (
@@ -88,14 +96,6 @@ export default function CandidateComparisonStack({ candidate1, candidate2, total
               </span>
             )}
           </div>
-        )}
-
-        {/* Remaining Space (Other Candidates / Unaccounted) */}
-        {otherPercentage > 0 && (
-          <div
-            className="h-full bg-gray-200 transition-all duration-1000"
-            style={{ width: `${otherPercentage}%` }}
-          />
         )}
       </div>
 

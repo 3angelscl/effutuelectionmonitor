@@ -62,25 +62,19 @@ export const POST = apiHandler(async (request: Request) => {
     throw new ApiError(400, 'No active election');
   }
 
-  // Determine approval status based on resultType and user role
-  const isPrivilegedUser = user.role === 'ADMIN' || user.role === 'OFFICER';
-  const isFinalByPrivileged = resultType === 'FINAL' && isPrivilegedUser;
-  const approvalStatus = isFinalByPrivileged ? 'APPROVED' : 'PENDING';
-  const approvalFields = isFinalByPrivileged
-    ? { approvedById: user.id, approvedAt: new Date() }
-    : { approvedById: null, approvedAt: null };
-
-  // Lock check + upserts in one interactive transaction to prevent race conditions.
-  // Two concurrent FINAL submissions for the same station will serialize here —
-  // only the first to acquire the lock will proceed; the second sees lockedCount > 0.
+  // Upsert results — agents and admins can freely update PROVISIONAL results.
+  // FINAL results can only be overridden by an admin with explicit confirmation.
   await prisma.$transaction(async (tx) => {
-    const lockedCount = await tx.electionResult.count({
-      where: { stationId, electionId: activeElection.id, resultType: 'FINAL' },
-    });
+    if (resultType !== 'FINAL') {
+      // Check if results are already FINAL — only admin can override
+      const lockedCount = await tx.electionResult.count({
+        where: { stationId, electionId: activeElection.id, resultType: 'FINAL' },
+      });
 
-    if (lockedCount > 0) {
-      if (user.role !== 'ADMIN' || !adminOverride) {
-        throw new ApiError(403, 'Results are locked (FINAL). Only an admin can override with explicit confirmation.');
+      if (lockedCount > 0) {
+        if (user.role !== 'ADMIN' || !adminOverride) {
+          throw new ApiError(403, 'Results are locked (FINAL). Only an admin can override with explicit confirmation.');
+        }
       }
     }
 
@@ -97,8 +91,6 @@ export const POST = apiHandler(async (request: Request) => {
           votes: r.votes,
           resultType,
           submittedById: user.id,
-          approvalStatus,
-          ...approvalFields,
         },
         create: {
           stationId,
@@ -107,8 +99,6 @@ export const POST = apiHandler(async (request: Request) => {
           resultType,
           submittedById: user.id,
           electionId: activeElection.id,
-          approvalStatus,
-          ...approvalFields,
         },
       });
     }

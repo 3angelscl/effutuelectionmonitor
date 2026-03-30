@@ -13,7 +13,6 @@
 export type EventType =
   | 'stats:updated'
   | 'results:submitted'
-  | 'results:approved'
   | 'turnout:updated'
   | 'notification:new'
   | 'chat:message'
