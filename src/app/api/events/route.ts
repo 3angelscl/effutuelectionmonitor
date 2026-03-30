@@ -67,28 +67,32 @@ export async function GET() {
       // Send initial connection event
       send({ type: 'connected', userId: user.id, role: user.role, timestamp: new Date().toISOString() });
 
-      // Cleanup when client disconnects
+      // Periodic check to detect disconnected clients and clean up resources.
+      // When a send() fails (client disconnected), alive is set to false,
+      // and this interval detects it and runs cleanup.
+      const checkAlive = setInterval(() => {
+        if (!alive) {
+          clearInterval(checkAlive);
+          clearInterval(heartbeat);
+          unsubscribe();
+        }
+      }, 30000);
+
+      // Cleanup all timers and subscriptions
       const cleanup = () => {
         alive = false;
         clearInterval(heartbeat);
+        clearInterval(checkAlive);
         unsubscribe();
       };
 
-      // ReadableStream cancel handler
+      // ReadableStream cancel handler — called when the client disconnects
       controller.close = new Proxy(controller.close, {
         apply(target, thisArg, args) {
           cleanup();
           return Reflect.apply(target, thisArg, args);
         },
       });
-
-      // Also set up an abort check
-      const checkAlive = setInterval(() => {
-        if (!alive) {
-          clearInterval(checkAlive);
-          cleanup();
-        }
-      }, 30000);
     },
   });
 

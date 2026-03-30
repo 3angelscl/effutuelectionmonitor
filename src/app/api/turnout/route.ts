@@ -4,6 +4,14 @@ import prisma from '@/lib/prisma';
 import { broadcastEventThrottled } from '@/lib/events';
 import { parseBody, turnoutMarkSchema, ValidationError } from '@/lib/validations';
 
+// In-memory throttle for snapshot creation — prevents duplicate snapshots
+// from concurrent turnout requests (survives hot-reloads via globalThis).
+const globalForSnapshot = globalThis as unknown as { snapshotThrottleTimers: Map<string, number> | undefined };
+if (!globalForSnapshot.snapshotThrottleTimers) {
+  globalForSnapshot.snapshotThrottleTimers = new Map();
+}
+const snapshotThrottleTimers = globalForSnapshot.snapshotThrottleTimers;
+
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRole(['ADMIN', 'AGENT']);
@@ -78,13 +86,13 @@ export async function PATCH(request: NextRequest) {
       electionId: activeElection.id,
     }, { intervalMs: 5000, key: activeElection.id });
 
-    // Take turnout snapshot (throttled to every 15 min)
-    const lastSnapshot = await prisma.turnoutSnapshot.findFirst({
-      where: { electionId: activeElection.id, stationId: null },
-      orderBy: { timestamp: 'desc' },
-    });
-    const shouldSnapshot = !lastSnapshot || (Date.now() - lastSnapshot.timestamp.getTime()) > 15 * 60 * 1000;
-    if (shouldSnapshot) {
+    // Take turnout snapshot (throttled in-memory to every 15 min per election
+    // to avoid duplicate snapshots from concurrent requests)
+    const snapshotKey = `snapshot:${activeElection.id}`;
+    const SNAPSHOT_INTERVAL = 15 * 60 * 1000;
+    const lastSnapshotTime = snapshotThrottleTimers.get(snapshotKey) ?? 0;
+    if (Date.now() - lastSnapshotTime > SNAPSHOT_INTERVAL) {
+      snapshotThrottleTimers.set(snapshotKey, Date.now());
       const [votedCount, registeredCount] = await Promise.all([
         prisma.voterTurnout.count({ where: { electionId: activeElection.id, hasVoted: true } }),
         // Exclude soft-deleted voters so snapshot counts are accurate

@@ -25,7 +25,7 @@ model User {
   assignedStations  PollingStation[] @relation("StationAgent")
   markedTurnout     VoterTurnout[]   @relation("MarkedBy")
   submittedResults  ElectionResult[] @relation("SubmittedBy")
-  approvedResults   ElectionResult[] @relation("ApprovedBy")
+
   activityLogs      ActivityLog[]
   sentMessages      ChatMessage[]    @relation("MessageSender")
   receivedMessages  ChatMessage[]    @relation("MessageReceiver")
@@ -180,10 +180,7 @@ model ElectionResult {
   candidateId     String
   votes           Int       @default(0)
   resultType      String    @default("PROVISIONAL") // PROVISIONAL or FINAL
-  approvalStatus  String    @default("PENDING") // PENDING, APPROVED, REJECTED
   submittedById   String
-  approvedById    String?
-  approvedAt      DateTime?
   electionId      String
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -191,13 +188,10 @@ model ElectionResult {
   pollingStation PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
   candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   submittedBy    User           @relation("SubmittedBy", fields: [submittedById], references: [id], onDelete: Cascade)
-  approvedBy     User?          @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
 
   @@unique([stationId, candidateId, electionId])
   @@index([electionId])
-  @@index([approvalStatus])
-  @@index([approvalStatus, createdAt])
   @@index([submittedById])
 }
 

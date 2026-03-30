@@ -36,43 +36,69 @@ export default function ElectionSelector() {
 
   const activeElection = elections.find((e) => e.isActive);
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     try {
-      await fetch('/api/elections', {
+      const res = await fetch('/api/elections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error || 'Failed to create election');
+        return;
+      }
       mutate();
       setCreateOpen(false);
       setForm({ name: '', description: '', date: '' });
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setError('Network error. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleActivate = async (electionId: string) => {
-    await fetch('/api/elections/active', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ electionId }),
-    });
-    mutate();
-    window.location.reload();
+    try {
+      const res = await fetch('/api/elections/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ electionId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error || 'Failed to activate election');
+        return;
+      }
+      mutate();
+      window.location.reload();
+    } catch {
+      setError('Network error. Please try again.');
+    }
   };
 
   const handleArchive = async (electionId: string, electionName: string) => {
     if (!confirm(`Archive "${electionName}"? This will mark it as COMPLETED and move it to Election Archives.`)) return;
-    await fetch('/api/elections', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: electionId, status: 'COMPLETED' }),
-    });
-    mutate();
+    try {
+      const res = await fetch('/api/elections', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: electionId, status: 'COMPLETED' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError((data as { error?: string }).error || 'Failed to archive election');
+        return;
+      }
+      mutate();
+    } catch {
+      setError('Network error. Please try again.');
+    }
   };
 
   return (
@@ -97,8 +123,13 @@ export default function ElectionSelector() {
         )}
       </div>
 
-      {canManage && <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="Manage Elections" size="lg">
+      {canManage && <Modal isOpen={createOpen} onClose={() => { setCreateOpen(false); setError(null); }} title="Manage Elections" size="lg">
         <div className="space-y-4">
+          {error && (
+            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {error}
+            </div>
+          )}
           {/* Existing elections */}
           {elections.length > 0 && (
             <div className="space-y-2">

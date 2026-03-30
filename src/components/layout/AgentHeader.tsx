@@ -67,22 +67,30 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
   }, []);
 
   const markAllRead = async () => {
-    await fetch('/api/notifications', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ markAll: true }),
-    });
-    mutateNotifs();
+    try {
+      await fetch('/api/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markAll: true }),
+      });
+      mutateNotifs();
+    } catch {
+      // Best effort — notifications will sync on next poll
+    }
   };
 
   const handleNotifClick = async (notif: Notification) => {
     if (!notif.isRead) {
-      await fetch('/api/notifications', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notificationId: notif.id }),
-      });
-      mutateNotifs();
+      try {
+        await fetch('/api/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notificationId: notif.id }),
+        });
+        mutateNotifs();
+      } catch {
+        // Best effort
+      }
     }
     if (notif.link) {
       window.location.href = notif.link;

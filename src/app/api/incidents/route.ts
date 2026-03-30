@@ -3,6 +3,10 @@ import prisma from '@/lib/prisma';
 import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
 import { parseBody, incidentCreateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
+import { createRateLimiter } from '@/lib/rate-limit';
+
+// 10 incident reports per 5 minutes per user
+const incidentRateLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 10 });
 
 export const GET = apiHandler(async (request: Request) => {
   const { user } = await requireAuth();
@@ -48,6 +52,9 @@ export const GET = apiHandler(async (request: Request) => {
 
 export const POST = apiHandler(async (request: Request) => {
   const { user } = await requireRole(['ADMIN', 'AGENT']);
+
+  const { success } = incidentRateLimiter.check(user.id);
+  if (!success) throw new ApiError(429, 'Too many incident reports. Please wait before submitting again.');
 
   let data;
   try {

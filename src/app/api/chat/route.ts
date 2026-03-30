@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { requireAuth, apiHandler } from '@/lib/api-auth';
+import { requireAuth, ApiError, apiHandler } from '@/lib/api-auth';
 import { parseBody, chatSendSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
+import { createRateLimiter } from '@/lib/rate-limit';
+
+// 60 messages per minute per user
+const chatRateLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 60 });
 
 export const GET = apiHandler(async (request: Request) => {
   const { user: currentUser } = await requireAuth();
@@ -10,8 +14,8 @@ export const GET = apiHandler(async (request: Request) => {
 
   const { searchParams } = new URL(request.url);
   const withUserId = searchParams.get('with');
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '50');
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50') || 50));
 
   if (withUserId) {
     // Get messages between current user and specified user
@@ -137,6 +141,9 @@ export const GET = apiHandler(async (request: Request) => {
 
 export const POST = apiHandler(async (request: Request) => {
   const { user: currentUser } = await requireAuth();
+
+  const { success } = chatRateLimiter.check(currentUser.id);
+  if (!success) throw new ApiError(429, 'Too many messages. Please slow down.');
 
   let data;
   try {

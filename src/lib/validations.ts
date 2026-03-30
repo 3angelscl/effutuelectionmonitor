@@ -138,25 +138,34 @@ export const electionUpdateSchema = z.object({
 
 // ─── Candidate Schemas ──────────────────────────────────────
 
+// Accepts relative upload paths (/uploads/...) or absolute URLs
+const photoSchema = z.string()
+  .refine(
+    (v) => v.startsWith('/') || URL.canParse(v),
+    'Photo must be a valid URL or upload path',
+  )
+  .optional()
+  .nullable();
+
 export const candidateCreateSchema = z.object({
-  name: z.string().min(1, 'Candidate name is required').max(200),
-  party: z.string().min(1, 'Party is required').max(100),
-  partyFull: z.string().max(200).optional().nullable(),
+  name: z.string().min(1, 'Candidate name is required').max(200).transform((s) => sanitizeText(s)),
+  party: z.string().min(1, 'Party is required').max(100).transform((s) => sanitizeText(s)),
+  partyFull: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a hex code like #3B82F6')
     .default('#3B82F6'),
-  photo: z.string().optional().nullable(),
+  photo: photoSchema,
   electionId: z.string().uuid().optional(),
 });
 
 export const candidateUpdateSchema = z.object({
   id: z.string().uuid('Valid candidate ID required'),
-  name: z.string().min(1).max(200).optional(),
-  party: z.string().min(1).max(100).optional(),
-  partyFull: z.string().max(200).optional().nullable(),
+  name: z.string().min(1).max(200).transform((s) => sanitizeText(s)).optional(),
+  party: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
+  partyFull: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  photo: z.string().optional().nullable(),
+  photo: photoSchema,
 });
 
 // ─── User Schemas ───────────────────────────────────────────
@@ -166,36 +175,36 @@ export const userCreateSchema = z.object({
   password: z.string()
     .min(8, 'Password must be at least 8 characters')
     .regex(passwordRegex, passwordComplexityMsg),
-  name: z.string().min(1, 'Name is required').max(200),
+  name: z.string().min(1, 'Name is required').max(200).transform((s) => sanitizeText(s)),
   role: z.enum(['ADMIN', 'AGENT', 'VIEWER', 'OFFICER']),
   phone: z.string().max(20).optional().nullable(),
-  photo: z.string().optional().nullable(),
+  photo: photoSchema,
   stationId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
 });
 
 export const userUpdateSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
+  name: z.string().min(1).max(200).transform((s) => sanitizeText(s)).optional(),
   phone: z.string().max(20).optional().nullable(),
-  photo: z.string().optional().nullable(),
+  photo: photoSchema,
   role: z.enum(['ADMIN', 'AGENT', 'VIEWER', 'OFFICER']).optional(),
 });
 
 // ─── Station Schemas ────────────────────────────────────────
 
 export const stationCreateSchema = z.object({
-  psCode: z.string().min(1, 'PS Code is required').max(50),
-  name: z.string().min(1, 'Station name is required').max(200),
-  location: z.string().max(500).optional().nullable(),
-  ward: z.string().max(200).optional().nullable(),
+  psCode: z.string().min(1, 'PS Code is required').max(50).transform((s) => sanitizeText(s)),
+  name: z.string().min(1, 'Station name is required').max(200).transform((s) => sanitizeText(s)),
+  location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  ward: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
 });
 
 export const stationUpdateSchema = z.object({
   id: z.string().uuid('Valid station ID required'),
-  name: z.string().min(1).max(200).optional(),
-  location: z.string().max(500).optional().nullable(),
-  ward: z.string().max(200).optional().nullable(),
+  name: z.string().min(1).max(200).transform((s) => sanitizeText(s)).optional(),
+  location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  ward: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
 });

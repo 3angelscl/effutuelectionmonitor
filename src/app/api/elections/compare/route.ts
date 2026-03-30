@@ -47,8 +47,10 @@ export async function GET() {
           where: { electionId: election.id },
         });
 
-        // Get total registered voters (all voters at all stations)
-        const totalRegistered = await prisma.voter.count();
+        // Get total registered voters (excluding soft-deleted)
+        const totalRegistered = await prisma.voter.count({
+          where: { deletedAt: null },
+        });
 
         const turnoutPct = totalRegistered > 0
           ? Math.round((turnoutCount / totalRegistered) * 10000) / 100
