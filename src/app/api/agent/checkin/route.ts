@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { broadcastEvent } from '@/lib/events';
+import { cancelAutoCheckout } from '@/lib/auto-checkout';
 
 export async function GET() {
   try {
@@ -79,6 +80,9 @@ export async function POST(request: NextRequest) {
         distanceWarning = `You are ${distance.toFixed(1)}km from the station`;
       }
     }
+
+    // Cancel any pending auto-checkout (explicit action from agent)
+    cancelAutoCheckout(user.id);
 
     const checkIn = await prisma.agentCheckIn.create({
       data: {

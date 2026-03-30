@@ -14,7 +14,16 @@ export default function IdleTimeout() {
   const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
+    try {
+      await fetch('/api/agent/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'CHECK_OUT' }),
+      });
+    } catch {
+      // Best effort — auto-checkout will handle it server-side
+    }
     signOut({ callbackUrl: '/login' });
   }, []);
 

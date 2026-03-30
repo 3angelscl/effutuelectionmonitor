@@ -23,6 +23,7 @@ interface TallyPhoto {
   createdAt: string;
   user: { id: string; name: string; role: string };
   station: { id: string; psCode: string; name: string };
+  election: { id: string; name: string } | null;
 }
 
 interface StationData {
@@ -245,6 +246,9 @@ export default function AgentTallyPhotosPage() {
                   {photo.caption && (
                     <p className="text-sm font-medium text-gray-900 truncate mb-1">{photo.caption}</p>
                   )}
+                  {photo.election && (
+                    <p className="text-xs text-gray-500 truncate mb-1">{photo.election.name}</p>
+                  )}
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-gray-400">{getTimeAgo(photo.createdAt)}</p>
                     <Badge variant="info" size="sm">{photo.station.psCode}</Badge>
@@ -276,7 +280,12 @@ export default function AgentTallyPhotosPage() {
                 <p className="font-medium text-gray-900 mb-1">{lightboxPhoto.caption}</p>
               )}
               <div className="flex items-center justify-between text-sm text-gray-500">
-                <span>Station: {lightboxPhoto.station.psCode} — {lightboxPhoto.station.name}</span>
+                <div>
+                  <span>Station: {lightboxPhoto.station.psCode} — {lightboxPhoto.station.name}</span>
+                  {lightboxPhoto.election && (
+                    <span className="block text-xs text-gray-400">{lightboxPhoto.election.name}</span>
+                  )}
+                </div>
                 <span>{getTimeAgo(lightboxPhoto.createdAt)}</span>
               </div>
               <button

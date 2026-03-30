@@ -11,6 +11,22 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { eventBus, ServerEvent } from '@/lib/events';
+import {
+  scheduleAutoCheckout,
+  cancelAutoCheckout,
+  checkoutStaleAgentsOnStartup,
+} from '@/lib/auto-checkout';
+
+// Track active SSE connections per user so multiple open tabs don't trigger
+// auto-checkout while any tab is still connected.
+const gConn = globalThis as unknown as {
+  agentSseConnections: Map<string, number> | undefined;
+};
+if (!gConn.agentSseConnections) gConn.agentSseConnections = new Map();
+const agentSseConnections = gConn.agentSseConnections;
+
+// Run startup cleanup once — handles stale CHECK_INs from previous server restarts
+checkoutStaleAgentsOnStartup();
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +41,13 @@ export async function GET() {
 
   const user = session.user as { id: string; role: string };
   const encoder = new TextEncoder();
+
+  // Track this connection; cancel any pending auto-checkout for this agent
+  if (user.role === 'AGENT') {
+    const count = (agentSseConnections.get(user.id) ?? 0) + 1;
+    agentSseConnections.set(user.id, count);
+    cancelAutoCheckout(user.id);
+  }
 
   const stream = new ReadableStream({
     start(controller) {
@@ -84,6 +107,17 @@ export async function GET() {
         clearInterval(heartbeat);
         clearInterval(checkAlive);
         unsubscribe();
+
+        // Decrement connection count; schedule auto-checkout when the last tab closes
+        if (user.role === 'AGENT') {
+          const remaining = Math.max(0, (agentSseConnections.get(user.id) ?? 1) - 1);
+          if (remaining === 0) {
+            agentSseConnections.delete(user.id);
+            scheduleAutoCheckout(user.id);
+          } else {
+            agentSseConnections.set(user.id, remaining);
+          }
+        }
       };
 
       // ReadableStream cancel handler — called when the client disconnects

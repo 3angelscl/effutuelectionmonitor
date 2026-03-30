@@ -80,12 +80,13 @@ model Election {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  candidates Candidate[]
-  results    ElectionResult[]
-  turnout    VoterTurnout[]
+  candidates   Candidate[]
+  results      ElectionResult[]
+  turnout      VoterTurnout[]
   favCandidate1Id String?
   favCandidate2Id String?
-  snapshots  TurnoutSnapshot[]
+  snapshots    TurnoutSnapshot[]
+  tallyPhotos  TallyPhoto[]
 
   @@index([isActive])
   @@index([status])
@@ -274,18 +275,21 @@ model Incident {
 }
 
 model TallyPhoto {
-  id        String   @id @default(uuid())
-  userId    String
-  stationId String
-  photoUrl  String
-  caption   String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  stationId  String
+  electionId String?
+  photoUrl   String
+  caption    String?
+  createdAt  DateTime @default(now())
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  station PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  station  PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  election Election?      @relation(fields: [electionId], references: [id], onDelete: SetNull)
 
   @@index([stationId])
   @@index([userId])
+  @@index([electionId])
   @@index([createdAt])
 }
 

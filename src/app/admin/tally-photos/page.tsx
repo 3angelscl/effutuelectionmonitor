@@ -18,6 +18,7 @@ interface TallyPhoto {
   createdAt: string;
   user: { id: string; name: string; role: string };
   station: { id: string; psCode: string; name: string };
+  election: { id: string; name: string } | null;
 }
 
 interface Station {
@@ -204,6 +205,9 @@ export default function TallyPhotosPage() {
                         {' — '}
                         {photo.station.name}
                       </p>
+                      {photo.election && (
+                        <p className="text-xs text-primary-600 font-medium mt-0.5 truncate">{photo.election.name}</p>
+                      )}
                       <p className="text-xs text-gray-500 mt-0.5">
                         by {photo.user.name}
                       </p>
@@ -242,6 +246,9 @@ export default function TallyPhotosPage() {
                 <h3 className="font-semibold text-gray-900">
                   {lightboxPhoto.station.psCode} — {lightboxPhoto.station.name}
                 </h3>
+                {lightboxPhoto.election && (
+                  <p className="text-xs font-medium text-primary-600">{lightboxPhoto.election.name}</p>
+                )}
                 <p className="text-sm text-gray-500">
                   Uploaded by {lightboxPhoto.user.name} · {getTimeAgo(lightboxPhoto.createdAt)}
                 </p>

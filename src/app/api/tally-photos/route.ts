@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
         include: {
           user: { select: { id: true, name: true, role: true } },
           station: { select: { id: true, psCode: true, name: true } },
+          election: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -112,6 +113,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Polling station not found' }, { status: 404 });
     }
 
+    // Attach to the active election if one exists
+    const activeElection = await prisma.election.findFirst({
+      where: { isActive: true },
+      select: { id: true },
+    });
+
     // Save file (buffer already read above for magic byte validation)
     const rawExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const allowedExts = ['jpg', 'jpeg', 'png'];
@@ -128,12 +135,14 @@ export async function POST(request: NextRequest) {
       data: {
         userId: user.id,
         stationId: resolvedStationId,
+        electionId: activeElection?.id ?? null,
         photoUrl,
         caption: caption?.trim() || null,
       },
       include: {
         user: { select: { id: true, name: true, role: true } },
         station: { select: { id: true, psCode: true, name: true } },
+        election: { select: { id: true, name: true } },
       },
     });
 
