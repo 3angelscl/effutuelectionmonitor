@@ -21,7 +21,7 @@ export async function logAudit({ userId, action, entity, entityId, detail, metad
     await prisma.activityLog.create({
       data: {
         userId,
-        type: 'ADMIN_MUTATION',
+        type: action ? action.toUpperCase().replace(/\s+/g, '_') : 'ADMIN_MUTATION',
         title: `${action} ${entity}`,
         detail: detail || `${action} ${entity} (${entityId})`,
         metadata: metadataStr,

@@ -53,7 +53,7 @@ export const GET = apiHandler(async (request: Request) => {
 export const POST = apiHandler(async (request: Request) => {
   const { user } = await requireRole(['ADMIN', 'AGENT']);
 
-  const { success } = incidentRateLimiter.check(user.id);
+  const { success } = await incidentRateLimiter.check(user.id);
   if (!success) throw new ApiError(429, 'Too many incident reports. Please wait before submitting again.');
 
   let data;

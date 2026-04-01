@@ -27,7 +27,7 @@ export const authOptions: NextAuthOptions = {
 
         const normalizedEmail = credentials.email.toLowerCase().trim();
 
-        const { success } = authLimiter.check(normalizedEmail);
+        const { success } = await authLimiter.check(normalizedEmail);
         if (!success) {
           throw new Error('Too many login attempts. Try again in 15 minutes.');
         }

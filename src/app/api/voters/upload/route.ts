@@ -72,7 +72,6 @@ export async function POST(request: NextRequest) {
       firstName: string;
       lastName: string;
       age: number;
-      psCode: string;
       stationId: string;
     }[] = [];
 
@@ -118,7 +117,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      votersToCreate.push({ voterId, firstName, lastName, age, psCode, stationId });
+      votersToCreate.push({ voterId, firstName, lastName, age, stationId });
       existingKeys.add(key);
     }
 

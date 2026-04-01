@@ -103,17 +103,31 @@ export async function checkoutStaleAgentsOnStartup() {
   try {
     const staleThreshold = new Date(Date.now() - AUTO_CHECKOUT_DELAY_MS);
 
+    // Fetch all assigned stations and their latest check-in in two queries
+    // instead of N+1 (one findFirst per station).
     const stations = await prisma.pollingStation.findMany({
       where: { agentId: { not: null } },
       select: { id: true, agentId: true },
     });
 
+    if (stations.length === 0) return;
+
+    const agentIds = stations.map((s) => s.agentId).filter(Boolean) as string[];
+
+    // One query gets the latest check-in record for every agent in the list
+    const latestCheckIns = await prisma.agentCheckIn.findMany({
+      where: { userId: { in: agentIds } },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['userId'],
+    });
+
+    const latestByUser = new Map(
+      latestCheckIns.map((c) => [c.userId, c]),
+    );
+
     for (const station of stations) {
       if (!station.agentId) continue;
-      const last = await prisma.agentCheckIn.findFirst({
-        where: { userId: station.agentId, stationId: station.id },
-        orderBy: { createdAt: 'desc' },
-      });
+      const last = latestByUser.get(station.agentId);
       if (last && last.type === 'CHECK_IN' && last.createdAt < staleThreshold) {
         await performAutoCheckout(station.agentId);
       }

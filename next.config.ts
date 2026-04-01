@@ -24,9 +24,14 @@ const nextConfig: NextConfig = {
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
           {
             key: 'Content-Security-Policy',
+            // Note: 'unsafe-inline' is required because Next.js injects inline scripts at runtime.
+            // A full nonce-based CSP (via middleware) would allow removing it.
+            // 'unsafe-eval' is stripped in production — it's only needed for Next.js HMR in dev.
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              process.env.NODE_ENV === 'development'
+                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+                : "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://unpkg.com",
               "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
               "font-src 'self'",

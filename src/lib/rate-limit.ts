@@ -1,24 +1,5 @@
-/**
- * Simple in-memory rate limiter.
- * Tracks requests per key (e.g. IP or email) within a sliding window.
- *
- * ⚠️  SINGLE-PROCESS ONLY — counters are stored in Node.js heap memory.
- *     In a multi-process deployment (PM2 cluster, Kubernetes replicas, etc.)
- *     each process maintains independent counters, so a client can multiply
- *     their effective rate by the number of running processes.
- *     For horizontally-scaled production use, replace with a Redis-backed
- *     implementation (e.g. @upstash/ratelimit with a Lua sliding-window script).
- *
- * Usage:
- *   const limiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5 });
- *   const { success } = limiter.check(key);
- *   if (!success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
- */
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
 interface RateLimiterOptions {
   /** Time window in milliseconds */
@@ -27,8 +8,48 @@ interface RateLimiterOptions {
   max: number;
 }
 
+/**
+ * Creates a rate limiter backed by Upstash Redis if credentials are provided in the environment.
+ * Falls back to an in-memory sliding window for single-process local development.
+ * 
+ * Usage:
+ *   const limiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5 });
+ *   const { success } = await limiter.check(key);
+ */
 export function createRateLimiter(options: RateLimiterOptions) {
   const { windowMs, max } = options;
+
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    const redis = Redis.fromEnv();
+    // Upstash Ratelimit parses strings like "10 s" or "15 m". We convert incoming windowMs to seconds.
+    const windowSeconds = Math.max(1, Math.floor(windowMs / 1000));
+    
+    const limiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(max, `${windowSeconds} s`),
+      analytics: false,
+    });
+
+    return {
+      async check(key: string): Promise<{ success: boolean; remaining: number; resetAt: number }> {
+        const result = await limiter.limit(key);
+        return {
+          success: result.success,
+          remaining: result.remaining,
+          resetAt: result.reset,
+        };
+      },
+    };
+  }
+
+  // Graceful Fallback: Local In-Memory Rate Limiter
+  console.warn('[RateLimit] Upstash Redis credentials not found. Falling back to local in-memory rate limiter.');
+  
+  interface RateLimitEntry {
+    count: number;
+    resetAt: number;
+  }
+  
   const store = new Map<string, RateLimitEntry>();
 
   // Clean up expired entries every 5 minutes
@@ -42,7 +63,7 @@ export function createRateLimiter(options: RateLimiterOptions) {
   }, 5 * 60 * 1000).unref();
 
   return {
-    check(key: string): { success: boolean; remaining: number; resetAt: number } {
+    async check(key: string): Promise<{ success: boolean; remaining: number; resetAt: number }> {
       const now = Date.now();
       const entry = store.get(key);
 

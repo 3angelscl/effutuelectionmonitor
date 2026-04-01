@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Rate limit by email to prevent brute-force
-      const { success: rateLimitOk } = twoFaLimiter.check(email.toLowerCase());
+      const { success: rateLimitOk } = await twoFaLimiter.check(email.toLowerCase());
       if (!rateLimitOk) {
         return NextResponse.json(
           { error: 'Too many verification attempts. Try again in 5 minutes.' },
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'enable') {
       // Rate limit by userId
-      const { success: rateLimitOk } = twoFaLimiter.check(`setup:${userId}`);
+      const { success: rateLimitOk } = await twoFaLimiter.check(`setup:${userId}`);
       if (!rateLimitOk) {
         return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
       }

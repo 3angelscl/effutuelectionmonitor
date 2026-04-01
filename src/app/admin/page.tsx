@@ -384,10 +384,12 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
-            {stats.stations.length > 10 && (
-              <div className="p-4 text-center">
+            {stats.stations.length > 0 && (
+              <div className="p-4 text-center border-t border-gray-100">
                 <a href="/admin/stations" className="text-sm text-primary-600 hover:underline">
-                  Showing {Math.min(10, stats.stations.length)} of {stats.stations.length} polling stations
+                  {stats.stations.length > 10
+                    ? `Showing 10 of ${stats.stations.length} polling stations — View all`
+                    : 'View all polling stations'}
                 </a>
               </div>
             )}

@@ -92,7 +92,7 @@ export default function LoginPage() {
           {/* Email */}
           <div>
             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-              Email or User ID
+              Email 
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -208,8 +208,7 @@ export default function LoginPage() {
         <div className="flex items-start gap-3 bg-gray-50 rounded-lg p-4">
           <CheckBadgeIcon className="h-5 w-5 text-primary-600 mt-0.5 shrink-0" />
           <p className="text-xs text-gray-600 leading-relaxed">
-            This is a secure system. All activities are logged and monitored
-            according to the national data protection protocol.
+            This is a secure system. All activities are logged and monitored.
           </p>
         </div>
       </div>

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       'First Name': v.firstName,
       'Last Name': v.lastName,
       'Age': v.age,
-      'PS Code': v.psCode,
+      'PS Code': v.pollingStation?.psCode,
       'Station Name': v.pollingStation.name,
       'Has Voted': (v.turnout?.[0]?.hasVoted) ? 'Yes' : 'No',
       'Voted At': v.turnout?.[0]?.votedAt ? v.turnout[0].votedAt.toISOString() : '',

@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const { success } = resetRequestLimiter.check(ip);
+    const { success } = await resetRequestLimiter.check(ip);
     if (!success) {
       return NextResponse.json(
         { error: 'Too many reset requests. Please try again later.' },

@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
@@ -121,7 +121,6 @@ model Voter {
   firstName String
   lastName  String
   age       Int
-  psCode    String
   stationId String
   photo     String?
   deletedAt DateTime?
@@ -188,7 +187,7 @@ model ElectionResult {
 
   pollingStation PollingStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
   candidate      Candidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  submittedBy    User           @relation("SubmittedBy", fields: [submittedById], references: [id], onDelete: Cascade)
+  submittedBy    User           @relation("SubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
   election       Election       @relation(fields: [electionId], references: [id], onDelete: Cascade)
 
   @@unique([stationId, candidateId, electionId])

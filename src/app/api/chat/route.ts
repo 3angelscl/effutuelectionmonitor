@@ -142,7 +142,7 @@ export const GET = apiHandler(async (request: Request) => {
 export const POST = apiHandler(async (request: Request) => {
   const { user: currentUser } = await requireAuth();
 
-  const { success } = chatRateLimiter.check(currentUser.id);
+  const { success } = await chatRateLimiter.check(currentUser.id);
   if (!success) throw new ApiError(429, 'Too many messages. Please slow down.');
 
   let data;
