@@ -21,6 +21,10 @@ import {
   ArrowsRightLeftIcon,
   PlusIcon,
   PhotoIcon,
+  ArrowUpTrayIcon,
+  DocumentArrowDownIcon,
+  CheckCircleIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -41,6 +45,7 @@ interface StationData {
   name: string;
   agentId: string | null;
 }
+
 
 export default function AgentManagement() {
   const { data: session } = useSession();
@@ -66,6 +71,17 @@ export default function AgentManagement() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', phone: '', photo: '', newPassword: '' });
   const [editAgent, setEditAgent] = useState<UserData | null>(null);
+
+  // Import agents state
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    successCount: number;
+    errorCount: number;
+    totalProcessed: number;
+    errors: string[];
+  } | null>(null);
 
   // Bulk assign state
   const [showBulkAssign, setShowBulkAssign] = useState(false);
@@ -99,6 +115,45 @@ export default function AgentManagement() {
     } finally {
       setUploading(false);
     }
+  };
+
+  // --- Import Agents ---
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const res = await fetch('/api/agents/import', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Import failed');
+        return;
+      }
+      setImportResult(data);
+      if (data.successCount > 0) {
+        mutateUsers();
+        mutateStations();
+        toast.success(`Imported ${data.successCount} agent${data.successCount !== 1 ? 's' : ''} successfully`);
+      }
+    } catch {
+      toast.error('Import failed. Please try again.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const header = 'name,email,password,phone,ps_code';
+    const example = 'Kwesi Mensah,kwesi@effutu.gov.gh,Agent@1234,+233551234567,PS0001';
+    const blob = new Blob([`${header}\n${example}\n`], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'agents_import_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const agents = (Array.isArray(users) ? users : []).filter((u) => u.role === 'AGENT');
@@ -318,10 +373,17 @@ export default function AgentManagement() {
               Bulk Assign
             </Button>
             <Button
+              variant="outline"
+              icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+              onClick={() => { setImportFile(null); setImportResult(null); setImportModalOpen(true); }}
+            >
+              Import Agents
+            </Button>
+            <Button
               icon={<PlusIcon className="h-4 w-4" />}
               onClick={() => { setError(''); setCreateModalOpen(true); }}
             >
-              Add New Agent
+              Add Agent
             </Button>
           </div>
         )}
@@ -705,15 +767,15 @@ export default function AgentManagement() {
               <p className="font-medium text-gray-900">{selectedAgent.name}</p>
               <p className="text-xs text-gray-500">{selectedAgent.email}</p>
               {selectedAgent.assignedStations.length > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Currently assigned to: {selectedAgent.assignedStations[0].psCode} - {selectedAgent.assignedStations[0].name}
+                <p className="text-xs text-orange-600 mt-1 font-medium">
+                  Currently: {selectedAgent.assignedStations[0].psCode} — {selectedAgent.assignedStations[0].name}
                 </p>
               )}
             </div>
           )}
           <div>
             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-              Select Polling Station
+              {selectedAgent?.assignedStations.length ? 'Select New Polling Station' : 'Select Polling Station'}
             </label>
             <select
               value={selectedStationId}
@@ -721,12 +783,22 @@ export default function AgentManagement() {
               className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
             >
               <option value="">Select station...</option>
-              {unassignedStations.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.psCode} - {s.name}
-                </option>
-              ))}
+              {(Array.isArray(stations) ? stations : [])
+                .filter((s) => {
+                  const currentStation = selectedAgent?.assignedStations[0];
+                  return !currentStation || s.psCode !== currentStation.psCode;
+                })
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.psCode} — {s.name}{s.agentId ? ' (occupied)' : ''}
+                  </option>
+                ))}
             </select>
+            {selectedAgent?.assignedStations.length ? (
+              <p className="text-xs text-gray-400 mt-1">
+                All available stations shown. Stations marked &quot;occupied&quot; will have their current agent unassigned.
+              </p>
+            ) : null}
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="secondary" onClick={() => setAssignModalOpen(false)}>
@@ -796,6 +868,102 @@ export default function AgentManagement() {
                   disabled={Object.values(bulkAssignments).filter(Boolean).length === 0}
                 >
                   Assign {Object.values(bulkAssignments).filter(Boolean).length} Agent{Object.values(bulkAssignments).filter(Boolean).length !== 1 ? 's' : ''}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Import Agents Modal */}
+      <Modal
+        isOpen={importModalOpen}
+        onClose={() => { setImportModalOpen(false); setImportFile(null); setImportResult(null); }}
+        title="Import Agents"
+      >
+        <div className="space-y-4">
+          {!importResult ? (
+            <>
+              <p className="text-sm text-gray-600">
+                Upload a CSV or Excel file to bulk-import agents. Each row creates one agent account.
+              </p>
+              <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700 space-y-1">
+                <p className="font-semibold">Required columns:</p>
+                <p className="font-mono">name, email, password</p>
+                <p className="font-semibold mt-1">Optional columns:</p>
+                <p className="font-mono">phone, ps_code</p>
+              </div>
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="flex items-center gap-2 text-xs text-primary-600 hover:text-primary-800 font-medium"
+              >
+                <DocumentArrowDownIcon className="h-4 w-4" />
+                Download CSV template
+              </button>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Select File
+                </label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                />
+                {importFile && (
+                  <p className="text-xs text-gray-500 mt-1">{importFile.name} ({(importFile.size / 1024).toFixed(1)} KB)</p>
+                )}
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <Button variant="secondary" onClick={() => setImportModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+                  onClick={handleImport}
+                  loading={importing}
+                  disabled={!importFile}
+                >
+                  Import
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg">
+                  <CheckCircleIcon className="h-5 w-5 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">
+                      {importResult.successCount} agent{importResult.successCount !== 1 ? 's' : ''} imported
+                    </p>
+                    <p className="text-xs text-green-600">{importResult.totalProcessed} rows processed</p>
+                  </div>
+                </div>
+                {importResult.errorCount > 0 && (
+                  <div className="p-3 bg-red-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <XCircleIcon className="h-4 w-4 text-red-600 shrink-0" />
+                      <p className="text-sm font-semibold text-red-700">{importResult.errorCount} row{importResult.errorCount !== 1 ? 's' : ''} failed</p>
+                    </div>
+                    <ul className="text-xs text-red-600 space-y-0.5 max-h-40 overflow-y-auto">
+                      {importResult.errors.map((err, i) => (
+                        <li key={i} className="font-mono">{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setImportFile(null); setImportResult(null); }}
+                >
+                  Import Another File
+                </Button>
+                <Button onClick={() => { setImportModalOpen(false); setImportFile(null); setImportResult(null); }}>
+                  Done
                 </Button>
               </div>
             </>
