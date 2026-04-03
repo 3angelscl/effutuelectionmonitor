@@ -16,6 +16,8 @@ import {
   EllipsisVerticalIcon,
   PlusIcon,
   MegaphoneIcon,
+  PencilSquareIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -34,6 +36,15 @@ interface Conversation {
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+}
+
+interface AllUser {
+  id: string;
+  name: string;
+  email: string;
+  photo: string | null;
+  role: string;
+  assignedStations: { name: string; psCode: string }[];
 }
 
 interface ChatMsg {
@@ -120,8 +131,11 @@ function ChatPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isPriority, setIsPriority] = useState(false);
   const [isBroadcastLog, setIsBroadcastLog] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const newChatInputRef = useRef<HTMLInputElement>(null);
 
   const { data: convData, mutate: mutateConversations } = useSWR<{ conversations: Conversation[] }>(
     '/api/chat',
@@ -135,10 +149,37 @@ function ChatPage() {
     { refreshInterval: 3000 }
   );
 
+  // All users — fetched only when the new-chat panel opens
+  const { data: allUsersData } = useSWR<AllUser[]>(
+    showNewChat ? '/api/users' : null,
+    fetcher
+  );
+
   const conversations = convData?.conversations || [];
   const messages = msgData?.messages || [];
-  const selectedConv = conversations.find((c) => c.user.id === selectedUserId);
   const currentUserId = (session?.user as { id: string } | undefined)?.id;
+
+  // selectedConv may be a real conversation OR a freshly-picked user with no messages yet
+  const selectedConv = useMemo(() => {
+    const existing = conversations.find((c) => c.user.id === selectedUserId);
+    if (existing) return existing;
+    if (!selectedUserId || !allUsersData) return null;
+    const u = allUsersData.find((u) => u.id === selectedUserId);
+    if (!u) return null;
+    return {
+      user: {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        photo: u.photo,
+        role: u.role,
+        station: u.assignedStations[0]?.name ?? null,
+      },
+      lastMessage: '',
+      lastMessageAt: new Date(0).toISOString(),
+      unreadCount: 0,
+    } satisfies Conversation;
+  }, [conversations, selectedUserId, allUsersData]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
@@ -155,6 +196,29 @@ function ChatPage() {
     () => conversations.filter((c) => getOnlineStatus(c.lastMessageAt) === 'online').length,
     [conversations]
   );
+
+  // Users available to start a new chat (exclude self, filter by search)
+  const newChatUsers = useMemo(() => {
+    const all = (allUsersData || []).filter(
+      (u) => u.id !== currentUserId && (u.role === 'AGENT' || u.role === 'OFFICER' || u.role === 'ADMIN')
+    );
+    if (!newChatSearch.trim()) return all;
+    const q = newChatSearch.toLowerCase();
+    return all.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.role.toLowerCase().includes(q) ||
+        (u.assignedStations[0]?.name || '').toLowerCase().includes(q)
+    );
+  }, [allUsersData, currentUserId, newChatSearch]);
+
+  // Auto-focus the new-chat search when panel opens
+  useEffect(() => {
+    if (showNewChat) {
+      setTimeout(() => newChatInputRef.current?.focus(), 50);
+    }
+  }, [showNewChat]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -227,20 +291,29 @@ function ChatPage() {
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* ── Left Sidebar ── */}
-        <div className={`w-full md:w-80 lg:w-96 border-r border-gray-200 bg-white flex flex-col shrink-0 ${selectedUserId ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`relative w-full md:w-80 lg:w-96 border-r border-gray-200 bg-white flex flex-col shrink-0 ${selectedUserId ? 'hidden md:flex' : 'flex'}`}>
           {/* Sidebar header */}
           <div className="px-4 pt-4 pb-3 border-b border-gray-100 space-y-3">
-            {/* Title + online badge */}
-            <div className="flex items-center justify-between">
+            {/* Title + compose + online badge */}
+            <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                 Live Field Agents
               </span>
-              {onlineCount > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                  {onlineCount} Online
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {onlineCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                    {onlineCount} Online
+                  </span>
+                )}
+                <button
+                  onClick={() => { setShowNewChat(true); setNewChatSearch(''); }}
+                  title="Start new chat"
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <PencilSquareIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* New Broadcast button */}
@@ -264,6 +337,85 @@ function ChatPage() {
               />
             </div>
           </div>
+
+          {/* New Chat Panel — overlays the conversation list */}
+          {showNewChat && (
+            <div className="absolute inset-x-0 top-0 bottom-0 bg-white z-10 flex flex-col md:relative md:inset-auto md:flex-none md:border-b md:border-gray-100">
+              {/* Panel header */}
+              <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center gap-3">
+                <button
+                  onClick={() => setShowNewChat(false)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+                <span className="text-sm font-semibold text-gray-900">New Conversation</span>
+              </div>
+              {/* Search */}
+              <div className="px-4 py-3 border-b border-gray-100">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <input
+                    ref={newChatInputRef}
+                    type="text"
+                    value={newChatSearch}
+                    onChange={(e) => setNewChatSearch(e.target.value)}
+                    placeholder="Search by name, station or role..."
+                    className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              {/* User list */}
+              <div className="flex-1 overflow-y-auto">
+                {!allUsersData && (
+                  <div className="p-6 text-center text-sm text-gray-400">Loading…</div>
+                )}
+                {allUsersData && newChatUsers.length === 0 && (
+                  <div className="p-6 text-center text-sm text-gray-400">No users found</div>
+                )}
+                {newChatUsers.map((u) => {
+                  const alreadyHasConv = conversations.some((c) => c.user.id === u.id);
+                  const station = u.assignedStations[0]?.name;
+                  const roleColors: Record<string, string> = {
+                    AGENT: 'bg-blue-50 text-blue-700',
+                    OFFICER: 'bg-purple-50 text-purple-700',
+                    ADMIN: 'bg-red-50 text-red-700',
+                  };
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        setSelectedUserId(u.id);
+                        setShowNewChat(false);
+                        setNewChatSearch('');
+                      }}
+                      className="w-full px-4 py-3 flex items-center gap-3 border-b border-gray-50 hover:bg-blue-50 text-left transition-colors"
+                    >
+                      {u.photo ? (
+                        <img src={u.photo} alt={u.name} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-sm font-bold text-gray-600">{getInitials(u.name)}</span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{u.name}</p>
+                          {alreadyHasConv && (
+                            <span className="text-[10px] text-gray-400 shrink-0">• existing</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 truncate">{station || u.email}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${roleColors[u.role] || 'bg-gray-100 text-gray-500'}`}>
+                        {u.role}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Conversation list */}
           <div className="flex-1 overflow-y-auto">
