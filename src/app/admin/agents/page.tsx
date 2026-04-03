@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
@@ -49,9 +49,11 @@ interface StationData {
 
 
 export default function AgentManagement() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
-  const canModify = userRole === 'ADMIN';
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const canModify = mounted && status === 'authenticated' && userRole === 'ADMIN';
 
   const { data: users, mutate: mutateUsers } = useSWR<UserData[]>('/api/users', fetcher);
   const { data: stations, mutate: mutateStations } = useSWR<StationData[]>('/api/stations', fetcher);

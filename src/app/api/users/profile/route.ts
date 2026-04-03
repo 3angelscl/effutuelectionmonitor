@@ -10,6 +10,14 @@ import { z } from 'zod';
 const profileUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   phone: z.string().max(20).optional().nullable(),
+  photo: z.string()
+    .refine(
+      (v) => !v || v.startsWith('/') || URL.canParse(v),
+      'Photo must be a valid URL or upload path',
+    )
+    .transform((v) => v || null)
+    .optional()
+    .nullable(),
   currentPassword: z.string().optional(),
   newPassword: z.string()
     .min(8, 'New password must be at least 8 characters')
@@ -75,6 +83,7 @@ export async function PUT(request: NextRequest) {
     const updateData: Record<string, string | null> = {};
     if (name !== undefined) updateData.name = name;
     if (phone !== undefined) updateData.phone = phone || null;
+    if (data.photo !== undefined) updateData.photo = data.photo;
 
     if (Object.keys(updateData).length === 0) {
       throw new ApiError(400, 'No fields to update');

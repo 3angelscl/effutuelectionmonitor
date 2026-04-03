@@ -1,14 +1,8 @@
 import type { NextConfig } from "next";
-import path from "path";
 
 const nextConfig: NextConfig = {
   // Limit server-side body parsing for API routes
   serverExternalPackages: ['jspdf', 'jspdf-autotable'],
-
-  // Fix Turbopack root detection in monorepo-like structure
-  turbopack: {
-    root: path.resolve(__dirname),
-  },
 
   // Security headers
   async headers() {

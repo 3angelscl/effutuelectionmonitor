@@ -58,8 +58,20 @@ export const GET = apiHandler(async (request: Request) => {
     where: { senderId: userId },
     orderBy: { createdAt: 'desc' },
     distinct: ['receiverId'],
-    include: {
-      receiver: { select: { id: true, name: true, email: true, photo: true, role: true } },
+    select: {
+      message: true,
+      createdAt: true,
+      receiverId: true,
+      receiver: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          photo: true,
+          role: true,
+          assignedStations: { select: { name: true, psCode: true }, take: 1 },
+        },
+      },
     },
   });
 
@@ -67,13 +79,32 @@ export const GET = apiHandler(async (request: Request) => {
     where: { receiverId: userId },
     orderBy: { createdAt: 'desc' },
     distinct: ['senderId'],
-    include: {
-      sender: { select: { id: true, name: true, email: true, photo: true, role: true } },
+    select: {
+      message: true,
+      createdAt: true,
+      senderId: true,
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          photo: true,
+          role: true,
+          assignedStations: { select: { name: true, psCode: true }, take: 1 },
+        },
+      },
     },
   });
 
   const conversations = new Map<string, {
-    user: { id: string; name: string; email: string; photo: string | null; role: string };
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      photo: string | null;
+      role: string;
+      station: string | null;
+    };
     lastMessage: string;
     lastMessageAt: Date;
     unreadCount: number;
@@ -83,7 +114,14 @@ export const GET = apiHandler(async (request: Request) => {
     const key = msg.receiverId;
     if (!conversations.has(key) || msg.createdAt > conversations.get(key)!.lastMessageAt) {
       conversations.set(key, {
-        user: msg.receiver,
+        user: {
+          id: msg.receiver.id,
+          name: msg.receiver.name,
+          email: msg.receiver.email,
+          photo: msg.receiver.photo,
+          role: msg.receiver.role,
+          station: msg.receiver.assignedStations[0]?.name ?? null,
+        },
         lastMessage: msg.message,
         lastMessageAt: msg.createdAt,
         unreadCount: 0,
@@ -96,7 +134,14 @@ export const GET = apiHandler(async (request: Request) => {
     const existing = conversations.get(key);
     if (!existing || msg.createdAt > existing.lastMessageAt) {
       conversations.set(key, {
-        user: msg.sender,
+        user: {
+          id: msg.sender.id,
+          name: msg.sender.name,
+          email: msg.sender.email,
+          photo: msg.sender.photo,
+          role: msg.sender.role,
+          station: msg.sender.assignedStations[0]?.name ?? null,
+        },
         lastMessage: msg.message,
         lastMessageAt: msg.createdAt,
         unreadCount: 0,

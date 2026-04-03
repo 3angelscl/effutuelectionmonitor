@@ -69,7 +69,6 @@ export default function SettingsPage() {
     setProfileMsg(null);
 
     try {
-      const userId = (session?.user as { id: string })?.id;
       let photoUrl = photo;
       if (photoFile) {
         setIsUploading(true);
@@ -96,8 +95,8 @@ export default function SettingsPage() {
       if (phone) body.phone = phone;
       if (photoUrl) body.photo = photoUrl;
 
-      const res = await fetch(`/api/users/${userId}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
@@ -106,7 +105,8 @@ export default function SettingsPage() {
         setProfileMsg({ type: 'success', text: 'Profile updated successfully' });
         update({ photo: photoUrl, name });
       } else {
-        setProfileMsg({ type: 'error', text: 'Failed to update profile' });
+        const data = await res.json().catch(() => ({}));
+        setProfileMsg({ type: 'error', text: data.error || 'Failed to update profile' });
       }
     } catch {
       setProfileMsg({ type: 'error', text: 'An error occurred' });
@@ -125,9 +125,8 @@ export default function SettingsPage() {
     setProfileMsg(null);
 
     try {
-      const userId = (session?.user as { id: string })?.id;
-      const res = await fetch(`/api/users/${userId}`, {
-        method: 'PATCH',
+      const res = await fetch('/api/users/profile', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
