@@ -68,12 +68,19 @@ export default function VoterManagement() {
     errors: string[];
   } | null>(null);
 
+  // Add Modal state
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    voterId: '', firstName: '', lastName: '', age: '', photo: '', psCode: ''
+  });
+
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editVoter, setEditVoter] = useState<VoterData | null>(null);
   const [editForm, setEditForm] = useState({
     voterId: '', firstName: '', lastName: '', age: '', photo: '',
   });
+  const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [error, setError] = useState('');
@@ -162,10 +169,24 @@ export default function VoterManagement() {
         body: formData,
       });
       const result = await res.json();
-      setUploadResult(result);
+      
+      if (!res.ok) {
+        setUploadResult({
+          successCount: 0,
+          errorCount: 1,
+          errors: [result.error || 'Upload failed'],
+        });
+        return;
+      }
+      
+      setUploadResult({
+        successCount: result.successCount || 0,
+        errorCount: result.errorCount || 0,
+        errors: Array.isArray(result.errors) ? result.errors : [],
+      });
       mutate();
     } catch {
-      setUploadResult({ successCount: 0, errorCount: 1, errors: ['Upload failed'] });
+      setUploadResult({ successCount: 0, errorCount: 1, errors: ['An unexpected error occurred during upload.'] });
     } finally {
       setUploading(false);
     }
@@ -185,7 +206,7 @@ export default function VoterManagement() {
     setEditModalOpen(true);
   };
 
-  const handlePhotoUpload = async (file: File) => {
+  const handlePhotoUpload = async (file: File, isAdd: boolean = false) => {
     setPhotoUploading(true);
     try {
       const formData = new FormData();
@@ -197,11 +218,58 @@ export default function VoterManagement() {
         return;
       }
       const { url } = await res.json();
-      setEditForm((f) => ({ ...f, photo: url }));
+      if (isAdd) {
+        setAddForm((f) => ({ ...f, photo: url }));
+      } else {
+        setEditForm((f) => ({ ...f, photo: url }));
+      }
     } catch {
       setError('Failed to upload photo');
     } finally {
       setPhotoUploading(false);
+    }
+  };
+
+  const openAddModal = () => {
+    setAddForm({
+      voterId: '',
+      firstName: '',
+      lastName: '',
+      age: '',
+      photo: '',
+      psCode: psFilter || '', // Default to current filter station
+    });
+    setError('');
+    setAddModalOpen(true);
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdding(true);
+    setError('');
+    try {
+      const res = await fetch('/api/voters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to add voter');
+        return;
+      }
+      // Search for the new voter by name so they appear at the top of the list
+      const newSearch = addForm.lastName;
+      setSearchInput(newSearch);
+      setSearch(newSearch);
+      mutate();
+      toast.success('Voter added successfully');
+      setAddModalOpen(false);
+    } catch (err) {
+      console.error('Fetch error:', err);
+      setError('An error occurred');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -361,13 +429,24 @@ export default function VoterManagement() {
             )}
             {canUpload && (
               <Button
+                variant="outline"
                 icon={<ArrowUpTrayIcon className="h-4 w-4" />}
                 onClick={() => {
                   setUploadResult(null);
                   setUploadModalOpen(true);
                 }}
               >
-                Upload Voters
+                Upload TEST VERIFY
+              </Button>
+            )}
+            {canModify && (
+              <Button
+                variant="primary"
+                className="bg-indigo-600 hover:bg-indigo-700"
+                icon={<MagnifyingGlassIcon className="h-4 w-4 rotate-45" />}
+                onClick={openAddModal}
+              >
+                Add Voter
               </Button>
             )}
           </div>
@@ -476,6 +555,110 @@ export default function VoterManagement() {
         </Card>
       </div>
 
+      {/* Add Voter Modal */}
+      <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Register Individual Voter">
+        <form onSubmit={handleAdd} className="space-y-4">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
+          )}
+
+          {/* Photo Upload */}
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Voter Photo
+            </label>
+            <div className="flex items-center gap-4">
+              {addForm.photo ? (
+                <img
+                  src={addForm.photo}
+                  alt="Preview"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                  <PhotoIcon className="h-6 w-6 text-gray-400" />
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="cursor-pointer px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700 transition-colors inline-block text-center">
+                  {photoUploading ? 'Uploading...' : addForm.photo ? 'Change Photo' : 'Upload Photo'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="hidden"
+                    disabled={photoUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handlePhotoUpload(file, true);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <Input
+            label="Voter ID"
+            value={addForm.voterId}
+            onChange={(e) => setAddForm((f) => ({ ...f, voterId: e.target.value }))}
+            placeholder="e.g., 2345678901"
+            required
+          />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="First Name"
+              value={addForm.firstName}
+              onChange={(e) => setAddForm((f) => ({ ...f, firstName: e.target.value }))}
+              required
+            />
+            <Input
+              label="Last Name"
+              value={addForm.lastName}
+              onChange={(e) => setAddForm((f) => ({ ...f, lastName: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Age"
+              type="number"
+              value={addForm.age}
+              onChange={(e) => setAddForm((f) => ({ ...f, age: e.target.value }))}
+              required
+            />
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                Polling Station
+              </label>
+              <select
+                value={addForm.psCode}
+                onChange={(e) => setAddForm((f) => ({ ...f, psCode: e.target.value }))}
+                required
+                className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                <option value="">Select Polling Station</option>
+                {(Array.isArray(stations) ? stations : []).map((s: { id: string; psCode: string; name: string }) => (
+                  <option key={s.id} value={s.psCode}>
+                    {s.psCode} - {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4">
+            <Button variant="secondary" type="button" onClick={() => setAddModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={adding}>
+              Create Voter
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Upload Modal */}
       <Modal
         isOpen={uploadModalOpen}
@@ -546,11 +729,11 @@ export default function VoterManagement() {
                   </span>
                 )}
               </div>
-              {uploadResult.errors.length > 0 && (
+              {(uploadResult.errors?.length ?? 0) > 0 && (
                 <details className="text-xs">
-                  <summary className="cursor-pointer text-red-700 font-medium mb-1">View errors ({uploadResult.errors.length})</summary>
+                  <summary className="cursor-pointer text-red-700 font-medium mb-1">View errors ({uploadResult.errors?.length})</summary>
                   <ul className="space-y-0.5 max-h-40 overflow-y-auto text-red-700 bg-red-50 rounded p-2">
-                    {uploadResult.errors.map((err, i) => (
+                    {uploadResult.errors?.map((err, i) => (
                       <li key={i} className="flex gap-1.5">
                         <span className="text-red-400 shrink-0">•</span>
                         {err}
@@ -616,7 +799,7 @@ export default function VoterManagement() {
                     disabled={photoUploading}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handlePhotoUpload(file);
+                      if (file) handlePhotoUpload(file, false);
                     }}
                   />
                 </label>

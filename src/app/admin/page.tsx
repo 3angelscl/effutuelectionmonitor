@@ -1,6 +1,6 @@
 'use client';
 
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { usePollingData } from '@/hooks/usePolling';
 import { DashboardStats } from '@/types';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -33,14 +33,29 @@ interface AgentStatus {
   hasSubmittedResults: boolean;
 }
 
+const AGENT_STATUS_PAGE_SIZE = 15;
+
 function AgentStatusSection() {
   const { data: agents } = usePollingData<AgentStatus[]>('/api/stats/agents', 30000);
+  const [page, setPage] = useState(1);
 
   if (!Array.isArray(agents) || agents.length === 0) return null;
 
   const checkedIn = agents.filter((a) => a.status === 'CHECKED_IN').length;
   const checkedOut = agents.filter((a) => a.status === 'CHECKED_OUT').length;
   const notCheckedIn = agents.filter((a) => a.status === 'NOT_CHECKED_IN').length;
+
+  // Sort: checked-in first (most recently active), then checked-out, then not checked in
+  const sorted = [...agents].sort((a, b) => {
+    const order = { CHECKED_IN: 0, CHECKED_OUT: 1, NOT_CHECKED_IN: 2 };
+    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+    const aTime = a.lastCheckIn ? new Date(a.lastCheckIn).getTime() : 0;
+    const bTime = b.lastCheckIn ? new Date(b.lastCheckIn).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  const totalPages = Math.ceil(sorted.length / AGENT_STATUS_PAGE_SIZE);
+  const paginated = sorted.slice((page - 1) * AGENT_STATUS_PAGE_SIZE, page * AGENT_STATUS_PAGE_SIZE);
 
   const statusVariant = (status: AgentStatus['status']) => {
     if (status === 'CHECKED_IN') return 'success' as const;
@@ -55,12 +70,7 @@ function AgentStatusSection() {
   };
 
   const initials = (name: string) =>
-    name
-      .split(' ')
-      .map((n) => n[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
+    name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
 
   return (
     <Card padding={false}>
@@ -75,6 +85,9 @@ function AgentStatusSection() {
             <span className="text-gray-500">{notCheckedIn} not checked in</span>
           </p>
         </div>
+        <a href="/admin/agents" className="text-sm text-primary-600 hover:underline shrink-0">
+          View all
+        </a>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -87,16 +100,12 @@ function AgentStatusSection() {
             </tr>
           </thead>
           <tbody>
-            {agents.map((agent) => (
+            {paginated.map((agent) => (
               <tr key={agent.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="py-3 px-6">
                   <div className="flex items-center gap-3">
                     {agent.photo ? (
-                      <img
-                        src={agent.photo}
-                        alt={agent.name}
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                      />
+                      <img src={agent.photo} alt={agent.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
                     ) : (
                       <div className="w-8 h-8 rounded-full bg-navy-700 flex items-center justify-center shrink-0">
                         <span className="text-white text-xs font-medium">{initials(agent.name)}</span>
@@ -135,6 +144,40 @@ function AgentStatusSection() {
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <div className="px-6 py-3 flex items-center justify-between border-t border-gray-100">
+          <p className="text-xs text-gray-500">
+            {(page - 1) * AGENT_STATUS_PAGE_SIZE + 1}–{Math.min(page * AGENT_STATUS_PAGE_SIZE, sorted.length)} of {sorted.length} agents
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="w-7 h-7 flex items-center justify-center rounded text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              &lsaquo;
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={`w-7 h-7 flex items-center justify-center rounded text-xs font-medium transition-colors ${
+                  page === p ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="w-7 h-7 flex items-center justify-center rounded text-sm text-gray-500 hover:bg-gray-100 disabled:opacity-30"
+            >
+              &rsaquo;
+            </button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -257,9 +300,6 @@ export default function AdminDashboard() {
           </Card>
         )}
 
-        {/* Agent Status Overview */}
-        <AgentStatusSection />
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Candidate Performance */}
           <Card>
@@ -325,6 +365,9 @@ export default function AdminDashboard() {
           </Suspense>
           </ErrorBoundary>
         </Card>
+
+        {/* Agent Status Overview */}
+        <AgentStatusSection />
 
         {/* Polling Station Summary - Full Width */}
         <Card padding={false}>

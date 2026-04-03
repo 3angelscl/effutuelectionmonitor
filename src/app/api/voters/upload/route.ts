@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { logAudit } from '@/lib/audit';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole('ADMIN');
+    const { user } = await requireRole('ADMIN');
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -127,6 +128,20 @@ export async function POST(request: NextRequest) {
       });
       successCount = result.count;
     }
+
+    await logAudit({
+      userId: user.id,
+      action: 'CREATE',
+      entity: 'Voter',
+      entityId: `bulk_upload_${Date.now()}`,
+      detail: `Bulk uploaded ${successCount} voters from file "${file.name}" (${errorCount} errors)`,
+      metadata: { 
+        successCount, 
+        errorCount, 
+        totalProcessed: rows.length,
+        fileName: file.name
+      },
+    });
 
     return NextResponse.json({
       successCount,

@@ -3,6 +3,7 @@ import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
+import { parseBody, userUpdateSchema } from '@/lib/validations';
 
 export async function DELETE(
   _request: NextRequest,
@@ -52,30 +53,25 @@ export async function PATCH(
     const { user: authUser } = await requireRole('ADMIN');
 
     const { id } = await params;
-    const body = await request.json();
-    const { name, phone, photo, role, password } = body;
+    const body = await parseBody(request, userUpdateSchema);
+    const { password, ...data } = body;
 
-    const data: Record<string, string | null | number> = {};
-    if (name !== undefined) data.name = name;
-    if (phone !== undefined) data.phone = phone || null;
-    if (photo !== undefined) data.photo = photo || null;
-    if (role !== undefined && ['ADMIN', 'OFFICER', 'AGENT', 'VIEWER'].includes(role)) {
-      data.role = role;
-    }
-    if (password !== undefined && password.length >= 6) {
-      data.password = await bcrypt.hash(password, 10);
+    const updateData: Record<string, any> = { ...data };
+    
+    if (password) {
+      updateData.password = await bcrypt.hash(password, 12);
       // Bump sessionVersion to invalidate existing sessions for this user
       const current = await prisma.user.findUnique({ where: { id }, select: { sessionVersion: true } });
-      data.sessionVersion = (current?.sessionVersion ?? 1) + 1;
+      updateData.sessionVersion = (current?.sessionVersion ?? 1) + 1;
     }
 
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    if (Object.keys(updateData).length === 0) {
+      throw new ApiError(400, 'No fields to update');
     }
 
     const user = await prisma.user.update({
       where: { id },
-      data,
+      data: updateData,
       select: {
         id: true,
         email: true,
@@ -91,8 +87,8 @@ export async function PATCH(
       action: 'UPDATE',
       entity: 'User',
       entityId: id,
-      detail: `Updated user "${user.name}"${data.password ? ' (password reset)' : ''}`,
-      metadata: { updatedFields: Object.keys(data).filter((k) => k !== 'password') },
+      detail: `Updated user "${user.name}"${password ? ' (password reset)' : ''}`,
+      metadata: { updatedFields: Object.keys(data) },
     });
 
     return NextResponse.json(user);

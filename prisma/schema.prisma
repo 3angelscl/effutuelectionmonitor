@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
@@ -17,6 +17,8 @@ model User {
   photo           String?
   twoFactorSecret String?
   twoFactorEnabled Boolean  @default(false)
+  totpAttempts    Int       @default(0)
+  totpLockUntil   DateTime?
   sessionVersion  Int       @default(1)
   deletedAt       DateTime?
   createdAt       DateTime  @default(now())
@@ -45,6 +47,7 @@ model PasswordReset {
   token     String   @unique
   expiresAt DateTime
   used      Boolean  @default(false)
+  attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

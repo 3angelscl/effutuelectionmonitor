@@ -115,24 +115,6 @@ export const GET = apiHandler(async (request: Request) => {
     if (conv) conv.unreadCount = uc._count;
   }
 
-  // Include agents that admin hasn't chatted with yet
-  if (currentUser.role === 'ADMIN') {
-    const agents = await prisma.user.findMany({
-      where: { role: 'AGENT' },
-      select: { id: true, name: true, email: true, photo: true, role: true },
-    });
-    for (const agent of agents) {
-      if (!conversations.has(agent.id)) {
-        conversations.set(agent.id, {
-          user: agent,
-          lastMessage: '',
-          lastMessageAt: new Date(0),
-          unreadCount: 0,
-        });
-      }
-    }
-  }
-
   const conversationList = Array.from(conversations.values())
     .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
 

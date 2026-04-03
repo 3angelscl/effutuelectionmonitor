@@ -25,6 +25,7 @@ import {
   DocumentArrowDownIcon,
   CheckCircleIcon,
   XCircleIcon,
+  MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -88,6 +89,7 @@ export default function AgentManagement() {
   const [bulkAssignments, setBulkAssignments] = useState<Record<string, string>>({});
   const [bulkAssigning, setBulkAssigning] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -157,10 +159,23 @@ export default function AgentManagement() {
   };
 
   const agents = (Array.isArray(users) ? users : []).filter((u) => u.role === 'AGENT');
+  const filteredAgents = searchQuery.trim()
+    ? agents.filter((a) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          a.name.toLowerCase().includes(q) ||
+          a.email.toLowerCase().includes(q) ||
+          (a.phone || '').toLowerCase().includes(q) ||
+          a.assignedStations.some(
+            (s) => s.name.toLowerCase().includes(q) || s.psCode.toLowerCase().includes(q)
+          )
+        );
+      })
+    : agents;
   const unassignedStations = (Array.isArray(stations) ? stations : []).filter((s) => !s.agentId);
   const perPage = 10;
-  const totalPages = Math.ceil(agents.length / perPage);
-  const paginatedAgents = agents.slice((page - 1) * perPage, page * perPage);
+  const totalPages = Math.ceil(filteredAgents.length / perPage);
+  const paginatedAgents = filteredAgents.slice((page - 1) * perPage, page * perPage);
 
   // --- Create Agent ---
   const handleCreate = async (e: React.FormEvent) => {
@@ -362,31 +377,46 @@ export default function AgentManagement() {
           />
         </div>
 
-        {/* Action Buttons */}
-        {canModify && (
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button
-              variant="outline"
-              icon={<ArrowsRightLeftIcon className="h-4 w-4" />}
-              onClick={() => { setError(''); setBulkAssignments({}); setShowBulkAssign(true); }}
-            >
-              Bulk Assign
-            </Button>
-            <Button
-              variant="outline"
-              icon={<ArrowUpTrayIcon className="h-4 w-4" />}
-              onClick={() => { setImportFile(null); setImportResult(null); setImportModalOpen(true); }}
-            >
-              Import Agents
-            </Button>
-            <Button
-              icon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => { setError(''); setCreateModalOpen(true); }}
-            >
-              Add Agent
-            </Button>
+        {/* Search + Actions row */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              placeholder="Search by name, email, phone, or station..."
+              className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+            />
           </div>
-        )}
+          {searchQuery && (
+            <span className="text-xs text-gray-500">{filteredAgents.length} of {agents.length} agents</span>
+          )}
+          {canModify && (
+            <>
+              <Button
+                variant="outline"
+                icon={<ArrowsRightLeftIcon className="h-4 w-4" />}
+                onClick={() => { setError(''); setBulkAssignments({}); setShowBulkAssign(true); }}
+              >
+                Bulk Assign
+              </Button>
+              <Button
+                variant="outline"
+                icon={<ArrowUpTrayIcon className="h-4 w-4" />}
+                onClick={() => { setImportFile(null); setImportResult(null); setImportModalOpen(true); }}
+              >
+                Import Agents
+              </Button>
+              <Button
+                icon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => { setError(''); setCreateModalOpen(true); }}
+              >
+                Add Agent
+              </Button>
+            </>
+          )}
+        </div>
 
         {/* Agents Table */}
         <Card padding={false}>
@@ -491,10 +521,12 @@ export default function AgentManagement() {
                     </tr>
                   );
                 })}
-                {agents.length === 0 && (
+                {filteredAgents.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-12 text-center text-gray-500">
-                      No agents registered yet. Click &quot;Add New Agent&quot; to get started.
+                      {searchQuery
+                        ? `No agents match "${searchQuery}"`
+                        : 'No agents registered yet. Click "Add Agent" to get started.'}
                     </td>
                   </tr>
                 )}
@@ -503,10 +535,10 @@ export default function AgentManagement() {
           </div>
 
           {/* Pagination */}
-          {agents.length > perPage && (
+          {filteredAgents.length > perPage && (
             <div className="px-6 py-4 flex items-center justify-between border-t border-gray-100">
               <p className="text-sm text-gray-500">
-                Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, agents.length)} of {agents.length} agents
+                Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, filteredAgents.length)} of {filteredAgents.length} agents
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -983,3 +1015,4 @@ export default function AgentManagement() {
     </div>
   );
 }
+ 

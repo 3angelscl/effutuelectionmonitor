@@ -2,8 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import { logAudit } from '@/lib/audit';
+import { parseData, ValidationError, passwordComplexityMsg, passwordRegex } from '@/lib/validations';
+import { z } from 'zod';
 
-const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/;
+// Local schema for profile updates
+const profileUpdateSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  phone: z.string().max(20).optional().nullable(),
+  currentPassword: z.string().optional(),
+  newPassword: z.string()
+    .min(8, 'New password must be at least 8 characters')
+    .regex(passwordRegex, passwordComplexityMsg)
+    .optional(),
+});
 
 export async function GET() {
   try {
@@ -25,31 +37,19 @@ export async function PUT(request: NextRequest) {
     const { user } = await requireAuth();
 
     const body = await request.json();
-    const { name, phone, currentPassword, newPassword } = body;
+    const data = parseData(body, profileUpdateSchema);
+    const { name, phone, currentPassword, newPassword } = data;
 
     // Password change flow
     if (currentPassword && newPassword) {
-      if (newPassword.length < 8) {
-        return NextResponse.json(
-          { error: 'New password must be at least 8 characters' },
-          { status: 400 },
-        );
-      }
-      if (!passwordRegex.test(newPassword)) {
-        return NextResponse.json(
-          { error: 'New password must contain at least 1 uppercase letter, 1 number, and 1 special character' },
-          { status: 400 },
-        );
-      }
-
       const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
       if (!dbUser) {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        throw new ApiError(404, 'User not found');
       }
 
       const isValid = await bcrypt.compare(currentPassword, dbUser.password);
       if (!isValid) {
-        return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
+        throw new ApiError(400, 'Current password is incorrect');
       }
 
       const hashed = await bcrypt.hash(newPassword, 12);
@@ -59,22 +59,40 @@ export async function PUT(request: NextRequest) {
         data: { password: hashed, sessionVersion: { increment: 1 } },
       });
 
+      await logAudit({
+        userId: user.id,
+        action: 'UPDATE',
+        entity: 'User',
+        entityId: user.id,
+        detail: 'User changed their own password',
+        metadata: { passwordChanged: true },
+      });
+
       return NextResponse.json({ success: true });
     }
 
     // Profile update flow
-    const data: Record<string, string | null> = {};
-    if (name !== undefined) data.name = name;
-    if (phone !== undefined) data.phone = phone || null;
+    const updateData: Record<string, string | null> = {};
+    if (name !== undefined) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone || null;
 
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    if (Object.keys(updateData).length === 0) {
+      throw new ApiError(400, 'No fields to update');
     }
 
     const updated = await prisma.user.update({
       where: { id: user.id },
-      data,
+      data: updateData,
       select: { id: true, name: true, email: true, phone: true },
+    });
+
+    await logAudit({
+      userId: user.id,
+      action: 'UPDATE',
+      entity: 'User',
+      entityId: user.id,
+      detail: 'User updated their profile details',
+      metadata: { updatedFields: Object.keys(updateData) },
     });
 
     return NextResponse.json(updated);

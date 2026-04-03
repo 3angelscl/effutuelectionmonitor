@@ -90,10 +90,31 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+/**
+ * Parse page/limit from URL search params, guarding against negative/NaN values.
+ * Returns validated { page, limit, skip } ready for Prisma queries.
+ */
+export function parsePagination(
+  searchParams: URLSearchParams,
+  opts?: { defaultLimit?: number },
+): { page: number; limit: number; skip: number } {
+  const schema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(opts?.defaultLimit ?? 20),
+  });
+  const raw = {
+    page: searchParams.get('page') ?? '1',
+    limit: searchParams.get('limit') ?? String(opts?.defaultLimit ?? 20),
+  };
+  const result = schema.safeParse(raw);
+  const { page, limit } = result.success ? result.data : { page: 1, limit: opts?.defaultLimit ?? 20 };
+  return { page, limit, skip: (page - 1) * limit };
+}
+
 // ─── Auth Schemas ───────────────────────────────────────────
 
-const passwordComplexityMsg = 'Password must contain at least 1 uppercase letter, 1 number, and 1 special character';
-const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/;
+export const passwordComplexityMsg = 'Password must contain at least 1 uppercase letter, 1 number, and 1 special character';
+export const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/;
 
 export const loginSchema = z.object({
   email: z.string().email('Valid email required'),
@@ -138,12 +159,13 @@ export const electionUpdateSchema = z.object({
 
 // ─── Candidate Schemas ──────────────────────────────────────
 
-// Accepts relative upload paths (/uploads/...) or absolute URLs
+// Accepts relative upload paths (/uploads/...), absolute URLs, or empty string (treated as null)
 const photoSchema = z.string()
   .refine(
-    (v) => v.startsWith('/') || URL.canParse(v),
+    (v) => !v || v.startsWith('/') || URL.canParse(v),
     'Photo must be a valid URL or upload path',
   )
+  .transform((v) => v || null)
   .optional()
   .nullable();
 
@@ -187,6 +209,10 @@ export const userUpdateSchema = z.object({
   phone: z.string().max(20).optional().nullable(),
   photo: photoSchema,
   role: z.enum(['ADMIN', 'AGENT', 'VIEWER', 'OFFICER']).optional(),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(passwordRegex, passwordComplexityMsg)
+    .optional(),
 });
 
 // ─── Station Schemas ────────────────────────────────────────
@@ -234,7 +260,7 @@ export const resultSubmitSchema = z.object({
     .array(
       z.object({
         candidateId: z.string().uuid(),
-        votes: z.number().int().min(0, 'Votes must be a non-negative integer'),
+        votes: z.number().int().min(0, 'Votes must be a non-negative integer').max(999999, 'Vote count exceeds maximum allowed'),
       }),
     )
     .min(1, 'At least one result is required'),
@@ -298,4 +324,24 @@ export const checkinSchema = z.object({
 export const turnoutMarkSchema = z.object({
   voterId: z.string().min(1, 'Voter ID required'),
   hasVoted: z.boolean(),
+});
+
+// ─── Voter Schemas ──────────────────────────────────────────
+
+export const voterCreateSchema = z.object({
+  voterId: z.string().min(1, 'Voter ID is required').max(50).transform((s) => sanitizeText(s)),
+  firstName: z.string().min(1, 'First name is required').max(100).transform((s) => sanitizeText(s)),
+  lastName: z.string().min(1, 'Last name is required').max(100).transform((s) => sanitizeText(s)),
+  age: z.coerce.number().int().min(18, 'Must be at least 18').max(150),
+  psCode: z.string().min(1, 'PS Code is required'),
+  photo: photoSchema,
+});
+
+export const voterUpdateSchema = z.object({
+  id: z.string().uuid('Valid ID required'),
+  voterId: z.string().min(1).max(50).transform((s) => sanitizeText(s)).optional(),
+  firstName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
+  lastName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
+  age: z.coerce.number().int().min(18).max(150).optional(),
+  photo: photoSchema,
 });

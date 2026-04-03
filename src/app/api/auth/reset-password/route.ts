@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { logAudit } from '@/lib/audit';
 import { resetPasswordSchema, parseData, ValidationError } from '@/lib/validations';
 
 // 10 reset attempts per 15 minutes per IP (prevents brute-force token guessing)
@@ -34,9 +35,19 @@ export async function POST(request: NextRequest) {
       include: { user: { select: { id: true, email: true } } },
     });
 
-    if (!resetRecord || resetRecord.used || resetRecord.expiresAt < new Date()) {
+    if (!resetRecord) {
+      return NextResponse.json({ error: 'Invalid reset token' }, { status: 400 });
+    }
+
+    if (resetRecord.used || resetRecord.attempts >= 5 || resetRecord.expiresAt < new Date()) {
       return NextResponse.json({ error: 'Invalid or expired reset token' }, { status: 400 });
     }
+
+    // Increment attempts immediately to prevent replay/brute-force
+    await prisma.passwordReset.update({
+      where: { id: resetRecord.id },
+      data: { attempts: { increment: 1 } },
+    });
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -50,6 +61,15 @@ export async function POST(request: NextRequest) {
         data: { used: true },
       }),
     ]);
+
+    await logAudit({
+      userId: resetRecord.userId,
+      action: 'UPDATE',
+      entity: 'User',
+      entityId: resetRecord.userId,
+      detail: `Password reset successfully via token for ${resetRecord.user.email}`,
+      metadata: { tokenPreview: token.substring(0, 8) + '...' },
+    });
 
     return NextResponse.json({ success: true, message: 'Password has been reset successfully' });
   } catch (error) {

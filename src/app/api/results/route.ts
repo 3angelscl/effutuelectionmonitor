@@ -62,6 +62,21 @@ export const POST = apiHandler(async (request: Request) => {
     throw new ApiError(400, 'No active election');
   }
 
+  // Vote Capping: Enforce that total votes do not exceed registered voters
+  const totalSubmittedVotes = (results as { votes: number }[]).reduce((sum, r) => sum + r.votes, 0);
+  const registeredVotersCount = await prisma.voter.count({
+    where: { stationId, deletedAt: null },
+  });
+
+  if (totalSubmittedVotes > registeredVotersCount) {
+    if (user.role !== 'ADMIN' || !adminOverride) {
+      throw new ApiError(
+        400,
+        `Total votes (${totalSubmittedVotes}) exceed the number of registered voters (${registeredVotersCount}) for this station.`
+      );
+    }
+  }
+
   // Upsert results — agents and admins can freely update PROVISIONAL results.
   // FINAL results can only be overridden by an admin with explicit confirmation.
   await prisma.$transaction(async (tx) => {
@@ -114,7 +129,8 @@ export const POST = apiHandler(async (request: Request) => {
       stationId,
       resultType,
       candidateCount: results.length,
-      totalVotes: results.reduce((s: number, r: { votes: number }) => s + r.votes, 0),
+      totalVotes: totalSubmittedVotes,
+      registeredVotersCount,
     },
   });
 

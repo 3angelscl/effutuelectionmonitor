@@ -155,11 +155,11 @@ export default function StationMapInner({ stations }: StationMapInnerProps) {
     // Fit bounds if we have markers
     if (markersRef.current.length > 0) {
       const group = L.featureGroup(markersRef.current);
-      map.fitBounds(group.getBounds().pad(0.1), { maxZoom: 15 });
+      map.fitBounds(group.getBounds().pad(0.1), { maxZoom: 12 });
     }
   }, [stations]);
 
   return (
-    <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '600px' }} />
+    <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '400px' }} />
   );
 }

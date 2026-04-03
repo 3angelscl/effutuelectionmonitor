@@ -74,10 +74,35 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
       }
 
+      // Hard lockout check
+      if (user.totpLockUntil && user.totpLockUntil > new Date()) {
+        return NextResponse.json(
+          { error: '2FA locked due to too many failed attempts. Try again in 5 minutes.' },
+          { status: 429 },
+        );
+      }
+
       const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
+        const newAttempts = user.totpAttempts + 1;
+        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
+            totpLockUntil: lockUntil,
+          },
+        });
+
         return NextResponse.json({ error: 'Invalid 2FA code' }, { status: 400 });
       }
+
+      // Success: Reset attempts
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { totpAttempts: 0, totpLockUntil: null },
+      });
 
       return NextResponse.json({ valid: true });
     }
@@ -102,28 +127,77 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
       }
 
+      if (user.totpLockUntil && user.totpLockUntil > new Date()) {
+        return NextResponse.json(
+          { error: 'Too many failed attempts. Try again in 5 minutes.' },
+          { status: 429 },
+        );
+      }
+
       const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
+        const newAttempts = user.totpAttempts + 1;
+        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
+
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
+            totpLockUntil: lockUntil,
+          },
+        });
         return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
       }
 
       await prisma.user.update({
         where: { id: userId },
-        data: { twoFactorEnabled: true },
+        data: { 
+          twoFactorEnabled: true,
+          totpAttempts: 0,
+          totpLockUntil: null
+        },
       });
 
       return NextResponse.json({ enabled: true });
     }
 
     if (action === 'disable') {
+      // Rate limit by userId to prevent brute-force
+      const { success: rateLimitOk } = await twoFaLimiter.check(`disable:${userId}`);
+      if (!rateLimitOk) {
+        return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
+      }
+
+      if (user.totpLockUntil && user.totpLockUntil > new Date()) {
+        return NextResponse.json(
+          { error: 'Too many failed attempts. Try again in 5 minutes.' },
+          { status: 429 },
+        );
+      }
+
       const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
+        const newAttempts = user.totpAttempts + 1;
+        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
+
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
+            totpLockUntil: lockUntil,
+          },
+        });
         return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
       }
 
       await prisma.user.update({
         where: { id: userId },
-        data: { twoFactorEnabled: false, twoFactorSecret: null },
+        data: { 
+          twoFactorEnabled: false, 
+          twoFactorSecret: null,
+          totpAttempts: 0,
+          totpLockUntil: null
+        },
       });
 
       return NextResponse.json({ enabled: false });

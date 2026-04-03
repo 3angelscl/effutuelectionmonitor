@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
-import { parseBody, stationCreateSchema, stationUpdateSchema, ValidationError } from '@/lib/validations';
+import { parseBody, stationCreateSchema, stationUpdateSchema, ValidationError, parsePagination } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 
 export const GET = apiHandler(async (request: Request) => {
@@ -10,6 +10,7 @@ export const GET = apiHandler(async (request: Request) => {
 
   const { searchParams } = new URL(request.url);
   const electionId = searchParams.get('electionId');
+  const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 50 });
 
   let activeElectionId = electionId;
   if (!activeElectionId) {
@@ -17,28 +18,33 @@ export const GET = apiHandler(async (request: Request) => {
     activeElectionId = active?.id || null;
   }
 
-  const stations = await prisma.pollingStation.findMany({
-    include: {
-      agent: { select: { id: true, name: true, email: true, phone: true } },
-      voters: {
-        select: {
-          id: true,
-          turnout: activeElectionId
-            ? { where: { electionId: activeElectionId }, select: { hasVoted: true } }
-            : undefined,
-        },
-      },
-      results: activeElectionId
-        ? {
-            where: { electionId: activeElectionId },
-            include: { candidate: true },
-          }
-        : {
-            include: { candidate: true },
+  const [total, stations] = await prisma.$transaction([
+    prisma.pollingStation.count(),
+    prisma.pollingStation.findMany({
+      skip,
+      take: limit,
+      include: {
+        agent: { select: { id: true, name: true, email: true, phone: true } },
+        voters: {
+          select: {
+            id: true,
+            turnout: activeElectionId
+              ? { where: { electionId: activeElectionId }, select: { hasVoted: true } }
+              : undefined,
           },
-    },
-    orderBy: { psCode: 'asc' },
-  });
+        },
+        results: activeElectionId
+          ? {
+              where: { electionId: activeElectionId },
+              include: { candidate: true },
+            }
+          : {
+              include: { candidate: true },
+            },
+      },
+      orderBy: { psCode: 'asc' },
+    }),
+  ]);
 
   const stationData = stations.map((station) => {
     const totalRegistered = station.voters.length;

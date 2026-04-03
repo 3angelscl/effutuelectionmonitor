@@ -6,22 +6,38 @@ import bcrypt from 'bcryptjs';
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
+// Helper to generate random coordinates in Ghana
+function getRandomCoordinates() {
+  const baseLatitude = 5.35;
+  const baseLongitude = -0.62;
+  const variance = 0.15;
+  return {
+    latitude: baseLatitude + (Math.random() - 0.5) * variance,
+    longitude: baseLongitude + (Math.random() - 0.5) * variance,
+  };
+}
+
 async function main() {
   console.log('Seeding database...');
 
-  // Clean existing data (order matters — child records first)
+  // Clean existing data
   await prisma.notification.deleteMany();
   await prisma.chatMessage.deleteMany();
   await prisma.activityLog.deleteMany();
   await prisma.turnoutSnapshot.deleteMany();
+  await prisma.agentCheckIn.deleteMany();
   await prisma.passwordReset.deleteMany();
   await prisma.voterTurnout.deleteMany();
   await prisma.electionResult.deleteMany();
+  await prisma.incident.deleteMany();
+  await prisma.tallyPhoto.deleteMany();
   await prisma.voter.deleteMany();
   await prisma.candidate.deleteMany();
   await prisma.pollingStation.deleteMany();
   await prisma.election.deleteMany();
   await prisma.user.deleteMany();
+
+  console.log('Cleaned existing data');
 
   // Create Elections
   const election2024 = await prisma.election.create({
@@ -57,59 +73,84 @@ async function main() {
       phone: '+233 55 000 0001',
     },
   });
+
   console.log('Admin created:', admin.email);
 
-  // Create Polling Stations (global — shared across elections)
-  const stationsData = [
-    { psCode: 'C040101', name: 'Winneba Town Hall A', location: 'Winneba Central', latitude: 5.3525, longitude: -0.6245 },
-    { psCode: 'C040102', name: 'Zongo Mosque Area', location: 'Winneba Zongo', latitude: 5.3548, longitude: -0.6230 },
-    { psCode: 'C040103', name: 'UEW North Campus', location: 'University of Education, Winneba', latitude: 5.3610, longitude: -0.6310 },
-    { psCode: 'C040104', name: 'Sankor School Park', location: 'Sankor, Winneba', latitude: 5.3470, longitude: -0.6180 },
-    { psCode: 'C040105', name: 'Gyatakrom Community Center', location: 'Gyatakrom', latitude: 5.3680, longitude: -0.6400 },
-    { psCode: 'C120101', name: 'Winneba Court House', location: 'Winneba', latitude: 5.3500, longitude: -0.6270 },
-    { psCode: 'C120105', name: 'Zongo Mosque Area B', location: 'Winneba Zongo', latitude: 5.3555, longitude: -0.6215 },
-    { psCode: 'C120120', name: 'UEW South Campus', location: 'Winneba', latitude: 5.3450, longitude: -0.6290 },
-    { psCode: 'B100202', name: 'Alata Station', location: 'Alata, Winneba', latitude: 5.3580, longitude: -0.6350 },
-    { psCode: 'B100301', name: 'Essuekyir Primary School', location: 'Essuekyir', latitude: 5.3720, longitude: -0.6450 },
-  ];
+  // Create 155 Polling Stations
+  console.log('Creating 155 polling stations...');
+  const stations = [];
+  const stationBatchSize = 50;
 
-  const stations = await Promise.all(
-    stationsData.map((s) =>
-      prisma.pollingStation.create({ data: s })
-    )
-  );
-  console.log(`${stations.length} polling stations created`);
+  for (let batch = 0; batch < Math.ceil(155 / stationBatchSize); batch++) {
+    const stationBatch = [];
+    const start = batch * stationBatchSize;
+    const end = Math.min(start + stationBatchSize, 155);
 
-  // Create Agents and assign to stations
-  const agentPassword = await bcrypt.hash('agent123', 12);
-  const agentsData = [
-    { name: 'Kwesi Mensah', email: 'kwesi@effutu.gov.gh', phone: '+233 55 123 4567' },
-    { name: 'Ama Darko', email: 'ama@effutu.gov.gh', phone: '+233 55 234 5678' },
-    { name: 'Kofi Asante', email: 'kofi@effutu.gov.gh', phone: '+233 55 345 6789' },
-    { name: 'Abena Osei', email: 'abena@effutu.gov.gh', phone: '+233 20 567 8901' },
-    { name: 'John Doe', email: 'john@effutu.gov.gh', phone: '+233 55 311 2233' },
-  ];
-
-  const agents = [];
-  for (let i = 0; i < agentsData.length; i++) {
-    const agent = await prisma.user.create({
-      data: {
-        ...agentsData[i],
-        password: agentPassword,
-        role: 'AGENT',
-      },
-    });
-    agents.push(agent);
-    if (i < stations.length) {
-      await prisma.pollingStation.update({
-        where: { id: stations[i].id },
-        data: { agentId: agent.id },
+    for (let i = start; i < end; i++) {
+      const coords = getRandomCoordinates();
+      stationBatch.push({
+        psCode: `PS${String(i + 1).padStart(4, '0')}`,
+        name: `Polling Station ${i + 1}`,
+        location: `Location ${i + 1}, Effutu District`,
+        ward: `Ward ${Math.floor(i / 15) + 1}`,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
       });
     }
-    console.log(`Agent ${agent.name} assigned to ${i < stations.length ? stations[i].psCode : 'none'}`);
+
+    const batchStations = await Promise.all(
+      stationBatch.map((s) => prisma.pollingStation.create({ data: s }))
+    );
+    stations.push(...batchStations);
   }
 
-  // Create Viewer
+  console.log(`✓ ${stations.length} polling stations created`);
+
+  // Create 160 Agents
+  console.log('Creating 160 agents...');
+  const agents = [];
+  const agentPassword = await bcrypt.hash('agent123', 12);
+  const firstNames = ['Kwesi', 'Ama', 'Kofi', 'Abena', 'Yaw', 'Akua', 'Kwame', 'Esi', 'Jude', 'Grace'];
+  const lastNames = ['Mensah', 'Darko', 'Asante', 'Osei', 'Boateng', 'Appiah', 'Annan', 'Owusu', 'Amoah', 'Ibrahim'];
+
+  const agentBatchSize = 50;
+  for (let batch = 0; batch < Math.ceil(160 / agentBatchSize); batch++) {
+    const agentBatch = [];
+    const start = batch * agentBatchSize;
+    const end = Math.min(start + agentBatchSize, 160);
+
+    for (let i = start; i < end; i++) {
+      const fn = firstNames[i % firstNames.length];
+      const ln = lastNames[i % lastNames.length];
+      agentBatch.push({
+        email: `agent${String(i + 1).padStart(3, '0')}@effutu.gov.gh`,
+        password: agentPassword,
+        name: `${fn} ${ln} ${i + 1}`,
+        role: 'AGENT' as const,
+        phone: `+233 55 ${String(100000 + i).slice(-6)}`,
+      });
+    }
+
+    const batchAgents = await Promise.all(
+      agentBatch.map((a) => prisma.user.create({ data: a }))
+    );
+    agents.push(...batchAgents);
+  }
+
+  console.log(`✓ ${agents.length} agents created`);
+
+  // Assign all 155 stations to 160 agents (5 agents will not get a station)
+  console.log('Assigning all stations to agents...');
+  for (let i = 0; i < stations.length; i++) {
+    const agentIndex = i % agents.length;
+    await prisma.pollingStation.update({
+      where: { id: stations[i].id },
+      data: { agentId: agents[agentIndex].id },
+    });
+  }
+  console.log(`✓ All ${stations.length} stations assigned to agents`);
+
+  // Create other user roles
   const viewerPassword = await bcrypt.hash('viewer123', 12);
   await prisma.user.create({
     data: {
@@ -119,9 +160,7 @@ async function main() {
       role: 'VIEWER',
     },
   });
-  console.log('Viewer created');
 
-  // Create Election Officer
   const officerPassword = await bcrypt.hash('officer123', 12);
   await prisma.user.create({
     data: {
@@ -132,9 +171,10 @@ async function main() {
       phone: '+233 55 000 0003',
     },
   });
-  console.log('Election Officer created');
 
-  // Create Candidates for Election 2024
+  console.log('Viewer and Officer created');
+
+  // Create Candidates
   const candidatesData = [
     { name: 'Alexander Afenyo-Markin', party: 'NPP', partyFull: 'New Patriotic Party', color: '#1E40AF' },
     { name: 'James Kofi Annan', party: 'NDC', partyFull: 'National Democratic Congress', color: '#15803D' },
@@ -148,73 +188,73 @@ async function main() {
       })
     )
   );
-  console.log(`${candidates.length} candidates created`);
+  console.log(`✓ ${candidates.length} candidates created`);
 
-  // Generate Voters (global — shared across elections)
-  const firstNames = [
+  // Create 170,000 voters distributed across stations
+  console.log('Creating 170,000 voters across stations...');
+  const votersPerStation = Math.floor(170000 / stations.length);
+  const remainingVoters = 170000 % stations.length;
+
+  const firstNames_voters = [
     'Kofi', 'Kwame', 'Ama', 'Akua', 'Yaw', 'Esi', 'Kwesi', 'Abena',
     'Kojo', 'Adwoa', 'Kwaku', 'Afia', 'Nana', 'Efua', 'Papa', 'Maame',
-    'Ekow', 'Araba', 'Kobina', 'Adjoa', 'Samuel', 'Grace', 'Isaac', 'Fatima',
-    'Yaw', 'Amma', 'Fiifi', 'Akosua',
   ];
 
-  const lastNames = [
+  const lastNames_voters = [
     'Agyemang', 'Serwaa', 'Bekoe', 'Mensah', 'Preko', 'Ofori', 'Asante',
     'Boateng', 'Appiah', 'Ibrahim', 'Quansah', 'Annan', 'Amoah', 'Owusu',
-    'Dadzie', 'Essien', 'Turkson', 'Inkoom', 'Gyan', 'Acquah',
   ];
 
   let voterCounter = 3000000000;
-  const voterBatchSize: Record<string, number> = {
-    'C040101': 950,
-    'C040102': 800,
-    'C040103': 1500,
-    'C040104': 650,
-    'C040105': 650,
-    'C120101': 850,
-    'C120105': 1120,
-    'C120120': 2400,
-    'B100202': 500,
-    'B100301': 700,
-  };
+  const voterBatchSize = 5000;
 
-  for (const station of stations) {
-    const count = voterBatchSize[station.psCode] || 500;
-    const votersToCreate = [];
+  for (let si = 0; si < stations.length; si++) {
+    const station = stations[si];
+    const voterCount = votersPerStation + (si < remainingVoters ? 1 : 0);
 
-    for (let i = 0; i < count; i++) {
-      voterCounter++;
-      const fn = firstNames[Math.floor(Math.random() * firstNames.length)];
-      const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
-      votersToCreate.push({
-        voterId: String(voterCounter),
-        firstName: fn,
-        lastName: ln,
-        age: 18 + Math.floor(Math.random() * 60),
-        psCode: station.psCode,
-        stationId: station.id,
-      });
+    for (let batch = 0; batch < Math.ceil(voterCount / voterBatchSize); batch++) {
+      const voterBatch = [];
+      const batchStart = batch * voterBatchSize;
+      const batchEnd = Math.min(batchStart + voterBatchSize, voterCount);
+
+      for (let i = batchStart; i < batchEnd; i++) {
+        voterCounter++;
+        voterBatch.push({
+          voterId: String(voterCounter),
+          firstName: firstNames_voters[Math.floor(Math.random() * firstNames_voters.length)],
+          lastName: lastNames_voters[Math.floor(Math.random() * lastNames_voters.length)],
+          age: 18 + Math.floor(Math.random() * 60),
+          stationId: station.id,
+        });
+      }
+
+      await prisma.voter.createMany({ data: voterBatch });
     }
 
-    await prisma.voter.createMany({ data: votersToCreate });
-    console.log(`${count} voters created for ${station.psCode} (${station.name})`);
+    if ((si + 1) % 20 === 0) {
+      console.log(`  Voters created for ${si + 1}/155 stations...`);
+    }
   }
 
-  // Simulate voting activity using VoterTurnout (per-election)
-  const activeStationCodes = ['C040101', 'C040103', 'C040105', 'C120101'];
+  console.log(`✓ 170,000 voters created across ${stations.length} stations`);
 
-  for (const psCode of activeStationCodes) {
-    const station = stations.find((s) => s.psCode === psCode)!;
+  // Simulate voting activity for first 20 stations
+  const activeStations = stations.slice(0, 20);
+  console.log('Simulating voting activity for first 20 stations...');
+
+  for (const station of activeStations) {
     const stationVoters = await prisma.voter.findMany({
       where: { stationId: station.id },
+      select: { id: true },
+      take: 100, // Sample first 100 voters
     });
 
-    // Mark ~60-85% as voted
+    if (stationVoters.length === 0) continue;
+
     const votePercentage = 0.6 + Math.random() * 0.25;
     const votedCount = Math.floor(stationVoters.length * votePercentage);
     const votersToMark = stationVoters.slice(0, votedCount);
 
-    // Create VoterTurnout records for this election
     const turnoutData = votersToMark.map((v) => ({
       voterId: v.id,
       electionId: election2024.id,
@@ -223,14 +263,13 @@ async function main() {
     }));
 
     await prisma.voterTurnout.createMany({ data: turnoutData });
-
-    console.log(`Simulated ${votedCount}/${stationVoters.length} votes at ${psCode}`);
   }
 
-  // Submit results for 2 stations
-  const completedCodes = ['C040101', 'C040105'];
-  for (const psCode of completedCodes) {
-    const station = stations.find((s) => s.psCode === psCode)!;
+  console.log(`✓ Voting activity simulated for ${activeStations.length} stations`);
+
+  // Submit results for first 5 stations
+  const completedStations = stations.slice(0, 5);
+  for (const station of completedStations) {
     const votedCount = await prisma.voterTurnout.count({
       where: {
         voter: { stationId: station.id },
@@ -238,6 +277,8 @@ async function main() {
         hasVoted: true,
       },
     });
+
+    if (votedCount === 0) continue;
 
     const nppVotes = Math.floor(votedCount * (0.45 + Math.random() * 0.15));
     const ndcVotes = Math.floor(votedCount * (0.35 + Math.random() * 0.1));
@@ -260,119 +301,21 @@ async function main() {
         },
       });
     }
-
-    console.log(`Results submitted for ${psCode}: NPP=${nppVotes}, NDC=${ndcVotes}, IND=${indVotes}`);
   }
 
-  // Generate Activity Logs for agents
-  const baseDate = new Date('2024-12-07T06:00:00');
+  console.log(`✓ Results submitted for ${completedStations.length} stations`);
 
-  for (let ai = 0; ai < agents.length; ai++) {
-    const agent = agents[ai];
-    const agentStation = ai < stations.length ? stations[ai] : null;
-    const logs = [];
-
-    // Login at start of day
-    logs.push({
-      userId: agent.id,
-      type: 'LOGIN',
-      title: 'System Login',
-      detail: 'Agent logged in from mobile device',
-      metadata: JSON.stringify({ device: 'Android', ip: '192.168.1.' + Math.floor(Math.random() * 255) }),
-      createdAt: new Date(baseDate.getTime() + Math.floor(Math.random() * 30) * 60000),
-    });
-
-    // Arrive at station
-    if (agentStation) {
-      logs.push({
-        userId: agent.id,
-        type: 'STATION_ARRIVAL',
-        title: 'Arrived at Station',
-        detail: `Checked in at ${agentStation.name} (${agentStation.psCode})`,
-        metadata: null,
-        createdAt: new Date(baseDate.getTime() + 45 * 60000 + Math.floor(Math.random() * 15) * 60000),
-      });
-    }
-
-    // Voter check-ins throughout the day
-    const checkinCount = 5 + Math.floor(Math.random() * 10);
-    for (let i = 0; i < checkinCount; i++) {
-      const hourOffset = 1 + Math.floor(Math.random() * 10); // 7am - 4pm
-      const minOffset = Math.floor(Math.random() * 60);
-      logs.push({
-        userId: agent.id,
-        type: 'VOTER_CHECKIN',
-        title: 'Voter Checked In',
-        detail: `Voter ID: ${3000000000 + Math.floor(Math.random() * 10000)}`,
-        metadata: JSON.stringify({ voterId: String(3000000000 + Math.floor(Math.random() * 10000)) }),
-        createdAt: new Date(baseDate.getTime() + (hourOffset * 60 + minOffset) * 60000),
-      });
-    }
-
-    // Random connectivity alert for some agents
-    if (Math.random() > 0.5) {
-      logs.push({
-        userId: agent.id,
-        type: 'CONNECTIVITY_ALERT',
-        title: 'Connectivity Alert',
-        detail: 'Network signal dropped below threshold — data sync paused',
-        metadata: JSON.stringify({ signalStrength: Math.floor(Math.random() * 30) + '%' }),
-        createdAt: new Date(baseDate.getTime() + (4 + Math.floor(Math.random() * 4)) * 3600000),
-      });
-    }
-
-    // Results submitted for agents at completed stations
-    if (agentStation && completedCodes.includes(agentStation.psCode)) {
-      logs.push({
-        userId: agent.id,
-        type: 'RESULTS_SUBMITTED',
-        title: 'Results Submitted',
-        detail: `Final tally submitted for ${agentStation.psCode}`,
-        metadata: null,
-        createdAt: new Date(baseDate.getTime() + 11 * 3600000 + Math.floor(Math.random() * 60) * 60000),
-      });
-    }
-
-    // Logout at end of day
-    logs.push({
-      userId: agent.id,
-      type: 'LOGOUT',
-      title: 'System Logout',
-      detail: 'Agent logged out',
-      metadata: null,
-      createdAt: new Date(baseDate.getTime() + 12 * 3600000 + Math.floor(Math.random() * 60) * 60000),
-    });
-
-    await prisma.activityLog.createMany({ data: logs });
-    console.log(`${logs.length} activity logs created for ${agent.name}`);
-  }
-
-  // Create sample notifications for admin
-  const notificationsData = [
-    { userId: admin.id, type: 'RESULT_SUBMITTED', title: 'Results submitted for C040101', message: 'Winneba Town Hall A has submitted final results', link: '/admin/stations' },
-    { userId: admin.id, type: 'AGENT_LOGIN', title: 'Agent Kwesi Mensah logged in', message: 'Logged in from mobile device', link: '/admin/agents' },
-    { userId: admin.id, type: 'ALERT', title: 'Connectivity alert at C040103', message: 'UEW North Campus reporting low signal', link: '/admin/stations' },
-    { userId: admin.id, type: 'SYSTEM', title: 'Election day started', message: 'General Election 2024 is now ONGOING', link: '/admin' },
-    { userId: admin.id, type: 'RESULT_SUBMITTED', title: 'Results submitted for C040105', message: 'Gyatakrom Community Center has submitted final results', link: '/admin/stations' },
-  ];
-  await prisma.notification.createMany({ data: notificationsData });
-  console.log(`${notificationsData.length} notifications created for admin`);
-
-  // Create sample chat messages
-  const chatMessages = [
-    { senderId: agents[0].id, receiverId: admin.id, message: 'Good morning admin. I have arrived at Winneba Town Hall A and setup is complete.' },
-    { senderId: admin.id, receiverId: agents[0].id, message: 'Great work Kwesi. Please begin voter check-in when ready.' },
-    { senderId: agents[0].id, receiverId: admin.id, message: 'Voter check-in has started. High turnout expected today.' },
-    { senderId: agents[2].id, receiverId: admin.id, message: 'Admin, we are experiencing network issues at UEW North Campus. Using offline mode.' },
-    { senderId: admin.id, receiverId: agents[2].id, message: 'Noted Kofi. Keep recording offline and sync when connection restores.' },
-  ];
-  for (const msg of chatMessages) {
-    await prisma.chatMessage.create({ data: msg });
-  }
-  console.log(`${chatMessages.length} chat messages created`);
-
-  console.log('\nSeed complete!');
-  console.log('Default user accounts have been created. See prisma/seed.ts for credentials.');
+  console.log('\n✅ Seed complete!');
+  console.log(`   • 155 polling stations with 1,096+ voters each`);
+  console.log(`   • 160 agents assigned to all 155 stations`);
+  console.log(`   • 170,000 total voters`);
+  console.log(`   • 3 candidates`);
+  console.log(`   • 2 elections (1 active)`);
+  console.log(`\nDefault accounts:`);
+  console.log(`   Admin: admin@effutu.gov.gh / admin123`);
+  console.log(`   Officer: officer@effutu.gov.gh / officer123`);
+  console.log(`   Viewer: viewer@effutu.gov.gh / viewer123`);
+  console.log(`   Agents: agent001@effutu.gov.gh - agent160@effutu.gov.gh / agent123`);
 }
 
 main()

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { parseBody, voterCreateSchema, voterUpdateSchema } from '@/lib/validations';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,11 +24,20 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      where.OR = [
-        { voterId: { contains: search } },
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
+      const parts = search.trim().split(/\s+/);
+      const conditions: unknown[] = [
+        { voterId: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
       ];
+      // Support "First Last" or "Last First" full-name searches
+      if (parts.length >= 2) {
+        conditions.push(
+          { firstName: { contains: parts[0], mode: 'insensitive' }, lastName: { contains: parts[1], mode: 'insensitive' } },
+          { firstName: { contains: parts[1], mode: 'insensitive' }, lastName: { contains: parts[0], mode: 'insensitive' } },
+        );
+      }
+      where.OR = conditions;
     }
 
     // Get active election for turnout status
@@ -79,27 +89,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole('ADMIN');
+    const { user: admin } = await requireRole('ADMIN');
 
-    const body = await request.json();
-    const { voterId, firstName, lastName, age, psCode, photo } = body;
-
-    if (!voterId || !firstName || !lastName || !age || !psCode) {
-      return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
-    }
+    const data = await parseBody(request, voterCreateSchema);
+    const { voterId, firstName, lastName, age, psCode, photo } = data;
 
     // Find the station by psCode (globally unique)
     const station = await prisma.pollingStation.findUnique({ where: { psCode } });
     if (!station) {
-      return NextResponse.json({ error: 'Polling station not found' }, { status: 404 });
+      throw new ApiError(404, 'Polling station not found');
     }
 
-    // Check duplicate voter at this station
+    // Check duplicate voter at this station (ignore soft-deleted records)
     const existing = await prisma.voter.findFirst({
-      where: { voterId, stationId: station.id },
+      where: { voterId, stationId: station.id, deletedAt: null },
     });
     if (existing) {
-      return NextResponse.json({ error: 'Voter ID already exists at this station' }, { status: 409 });
+      throw new ApiError(409, 'Voter ID already exists at this station');
     }
 
     const voter = await prisma.voter.create({
@@ -107,45 +113,48 @@ export async function POST(request: NextRequest) {
         voterId,
         firstName,
         lastName,
-        age: parseInt(age),
+        age,
         stationId: station.id,
         photo: photo || null,
       },
     });
 
+    await logAudit({
+      userId: admin.id,
+      action: 'CREATE',
+      entity: 'Voter',
+      entityId: voter.id,
+      detail: `Registered new voter: ${firstName} ${lastName} (${voterId}) at station ${psCode}`,
+      metadata: { stationId: station.id, voterId },
+    });
+
     return NextResponse.json(voter, { status: 201 });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
-    console.error('Create voter error:', error);
+    console.error('Create voter server error:', error);
     return NextResponse.json({ error: 'Failed to create voter' }, { status: 500 });
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    await requireRole('ADMIN');
+    const { user: admin } = await requireRole('ADMIN');
 
-    const body = await request.json();
-    const { id, voterId, firstName, lastName, age, photo } = body;
-
-    if (!id) {
-      return NextResponse.json({ error: 'Voter ID required' }, { status: 400 });
-    }
-
-    const data: Record<string, unknown> = {};
-    if (voterId !== undefined) data.voterId = voterId;
-    if (firstName !== undefined) data.firstName = firstName;
-    if (lastName !== undefined) data.lastName = lastName;
-    if (age !== undefined) data.age = parseInt(String(age));
-    if (photo !== undefined) data.photo = photo || null;
-
-    if (Object.keys(data).length === 0) {
-      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-    }
+    const body = await parseBody(request, voterUpdateSchema);
+    const { id, ...updateData } = body;
 
     const voter = await prisma.voter.update({
       where: { id },
-      data,
+      data: updateData,
+    });
+
+    await logAudit({
+      userId: admin.id,
+      action: 'UPDATE',
+      entity: 'Voter',
+      entityId: voter.id,
+      detail: `Updated voter details for ${voter.firstName} ${voter.lastName} (${voter.voterId})`,
+      metadata: { updateData },
     });
 
     return NextResponse.json(voter);
