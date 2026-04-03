@@ -18,6 +18,8 @@ import {
   MegaphoneIcon,
   PencilSquareIcon,
   XMarkIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -55,6 +57,15 @@ interface ChatMsg {
   createdAt: string;
   sender: { id: string; name: string; photo: string | null };
 }
+
+interface BroadcastEntry {
+  id: string;
+  message: string;
+  sentTo: number;
+  createdAt: string;
+}
+
+const IMAGE_URL_RE = /^\/uploads\/[^\s]+\.(jpg|jpeg|png|gif|webp)$/i;
 
 function getInitials(name: string) {
   const parts = name.split(' ');
@@ -104,6 +115,19 @@ function isSameDay(a: string, b: string) {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
 
+function MessageContent({ message, isMe }: { message: string; isMe: boolean }) {
+  if (IMAGE_URL_RE.test(message.trim())) {
+    return (
+      <img
+        src={message.trim()}
+        alt="Attachment"
+        className="max-w-full rounded-lg max-h-48 object-contain"
+      />
+    );
+  }
+  return <span className={isMe ? 'text-white' : 'text-gray-900'}>{message}</span>;
+}
+
 export default function ChatPageWrapper() {
   return (
     <Suspense fallback={
@@ -124,18 +148,21 @@ function ChatPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(preselectedAgent);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [broadcasting, setBroadcasting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isPriority, setIsPriority] = useState(false);
-  const [isBroadcastLog, setIsBroadcastLog] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState('');
+  const [showBroadcastHistory, setShowBroadcastHistory] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const newChatInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: convData, mutate: mutateConversations } = useSWR<{ conversations: Conversation[] }>(
     '/api/chat',
@@ -155,9 +182,25 @@ function ChatPage() {
     fetcher
   );
 
+  // Real check-in count from AgentCheckIn table
+  const { data: checkedInData } = useSWR<{ count: number }>(
+    '/api/stats/agents/checkedin',
+    fetcher,
+    { refreshInterval: 30000 }
+  );
+
+  // Broadcast history for the sidebar log
+  const { data: broadcastData, mutate: mutateBroadcasts } = useSWR<{ broadcasts: BroadcastEntry[] }>(
+    '/api/chat/broadcast',
+    fetcher,
+    { refreshInterval: 60000 }
+  );
+
   const conversations = convData?.conversations || [];
   const messages = msgData?.messages || [];
   const currentUserId = (session?.user as { id: string } | undefined)?.id;
+  const checkedInCount = checkedInData?.count ?? 0;
+  const recentBroadcasts = broadcastData?.broadcasts?.slice(0, 5) || [];
 
   // selectedConv may be a real conversation OR a freshly-picked user with no messages yet
   const selectedConv = useMemo(() => {
@@ -191,11 +234,6 @@ function ChatPage() {
         (c.user.station || '').toLowerCase().includes(q)
     );
   }, [conversations, searchQuery]);
-
-  const onlineCount = useMemo(
-    () => conversations.filter((c) => getOnlineStatus(c.lastMessageAt) === 'online').length,
-    [conversations]
-  );
 
   // Users available to start a new chat (exclude self, filter by search)
   const newChatUsers = useMemo(() => {
@@ -246,13 +284,41 @@ function ChatPage() {
       });
       if (!res.ok) throw new Error('Failed to send message');
       setNewMessage('');
-      setIsPriority(false);
       mutateMessages();
       mutateConversations();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleFileUpload = async (file: File) => {
+    if (!selectedUserId) return;
+    setUploadingFile(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || 'Upload failed');
+      }
+      const { url } = await uploadRes.json() as { url: string };
+      // Send the image URL as a chat message — rendered as inline image in the thread
+      const sendRes = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiverId: selectedUserId, message: url }),
+      });
+      if (!sendRes.ok) throw new Error('Failed to send attachment');
+      mutateMessages();
+      mutateConversations();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingFile(false);
     }
   };
 
@@ -275,7 +341,7 @@ function ChatPage() {
       if (!res.ok) throw new Error('Failed to send broadcast');
       setBroadcastMsg('');
       setShowBroadcast(false);
-      mutateConversations();
+      mutateBroadcasts();
     } catch {
       setError('Failed to send broadcast. Please try again.');
     } finally {
@@ -294,16 +360,16 @@ function ChatPage() {
         <div className={`relative w-full md:w-80 lg:w-96 border-r border-gray-200 bg-white flex flex-col shrink-0 ${selectedUserId ? 'hidden md:flex' : 'flex'}`}>
           {/* Sidebar header */}
           <div className="px-4 pt-4 pb-3 border-b border-gray-100 space-y-3">
-            {/* Title + compose + online badge */}
+            {/* Title + compose + on-field badge */}
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
                 Live Field Agents
               </span>
               <div className="flex items-center gap-2">
-                {onlineCount > 0 && (
+                {checkedInCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-[11px] font-bold rounded-full">
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                    {onlineCount} Online
+                    {checkedInCount} On Field
                   </span>
                 )}
                 <button
@@ -338,9 +404,40 @@ function ChatPage() {
             </div>
           </div>
 
+          {/* Broadcast History (collapsible) */}
+          {recentBroadcasts.length > 0 && (
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setShowBroadcastHistory((v) => !v)}
+                className="w-full px-4 py-2.5 flex items-center gap-2 text-left hover:bg-gray-50 transition-colors"
+              >
+                <MegaphoneIcon className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex-1">
+                  Recent Broadcasts
+                </span>
+                {showBroadcastHistory
+                  ? <ChevronDownIcon className="h-3 w-3 text-gray-400" />
+                  : <ChevronRightIcon className="h-3 w-3 text-gray-400" />
+                }
+              </button>
+              {showBroadcastHistory && (
+                <div className="pb-1">
+                  {recentBroadcasts.map((b) => (
+                    <div key={b.id} className="px-4 py-2 border-t border-gray-50">
+                      <p className="text-xs text-gray-700 line-clamp-2">{b.message}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {b.sentTo} agents · {formatConvTime(b.createdAt)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* New Chat Panel — overlays the conversation list */}
           {showNewChat && (
-            <div className="absolute inset-x-0 top-0 bottom-0 bg-white z-10 flex flex-col md:relative md:inset-auto md:flex-none md:border-b md:border-gray-100">
+            <div className="absolute inset-x-0 top-0 bottom-0 bg-white z-10 flex flex-col">
               {/* Panel header */}
               <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center gap-3">
                 <button
@@ -486,7 +583,9 @@ function ChatPage() {
 
                     <div className="flex items-center justify-between mt-0.5">
                       <p className={`text-xs truncate ${status === 'offline' ? 'italic text-gray-400' : 'text-gray-500'}`}>
-                        {conv.lastMessage || 'No messages yet'}
+                        {IMAGE_URL_RE.test((conv.lastMessage || '').trim())
+                          ? '📎 Image'
+                          : conv.lastMessage || 'No messages yet'}
                       </p>
                       {conv.unreadCount > 0 && (
                         <span className="ml-2 min-w-[18px] h-[18px] px-1 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0">
@@ -570,6 +669,7 @@ function ChatPage() {
                   const isMe = msg.senderId === currentUserId;
                   const prevMsg = messages[idx - 1];
                   const showDivider = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
+                  const isImage = IMAGE_URL_RE.test(msg.message.trim());
 
                   return (
                     <div key={msg.id}>
@@ -586,13 +686,15 @@ function ChatPage() {
                       <div className={`flex mb-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className="max-w-[65%] md:max-w-[55%]">
                           <div
-                            className={`px-4 py-2.5 text-sm leading-relaxed break-words ${
-                              isMe
-                                ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
-                                : 'bg-white text-gray-900 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
+                            className={`text-sm leading-relaxed break-words ${
+                              isImage
+                                ? 'p-1'
+                                : isMe
+                                  ? 'px-4 py-2.5 bg-blue-600 text-white rounded-2xl rounded-br-sm'
+                                  : 'px-4 py-2.5 bg-white text-gray-900 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100'
                             }`}
                           >
-                            {msg.message}
+                            <MessageContent message={msg.message} isMe={isMe} />
                           </div>
                           <p className={`text-[10px] text-gray-400 mt-1 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                             {formatMsgTime(msg.createdAt)}
@@ -621,18 +723,51 @@ function ChatPage() {
 
               {/* Input area */}
               <div className="bg-white border-t border-gray-200 px-4 pt-3 pb-3 shrink-0">
+                {/* Hidden file inputs — inside the chat branch to keep SSR consistent */}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                    e.target.value = '';
+                  }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.gif,.webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file);
+                    e.target.value = '';
+                  }}
+                />
+                {uploadingFile && (
+                  <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-600 flex items-center gap-2">
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full" />
+                    Uploading…
+                  </div>
+                )}
                 <div className="flex items-end gap-2">
                   <button
-                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-0.5"
-                    title="Attach file"
-                  >
-                    <PaperClipIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-0.5"
+                    onClick={() => imageInputRef.current?.click()}
+                    disabled={uploadingFile || !selectedUserId}
+                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-0.5 disabled:opacity-40"
                     title="Send photo"
                   >
                     <CameraIcon className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingFile || !selectedUserId}
+                    className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0 mb-0.5 disabled:opacity-40"
+                    title="Attach file"
+                  >
+                    <PaperClipIcon className="h-5 w-5" />
                   </button>
 
                   <textarea
@@ -654,36 +789,9 @@ function ChatPage() {
                   </button>
                 </div>
 
-                {/* Footer options */}
-                <div className="flex items-center justify-between mt-2 px-1">
-                  <div className="flex items-center gap-5">
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={isPriority}
-                        onChange={(e) => setIsPriority(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-1"
-                      />
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                        Priority Tag
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={isBroadcastLog}
-                        onChange={(e) => setIsBroadcastLog(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-1"
-                      />
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-                        Broadcast Log
-                      </span>
-                    </label>
-                  </div>
-                  <p className="text-[10px] text-gray-400 italic hidden sm:block">
-                    Press Shift + Enter for new line
-                  </p>
-                </div>
+                <p className="text-[10px] text-gray-400 italic mt-2 text-right hidden sm:block">
+                  Press Shift + Enter for new line
+                </p>
               </div>
             </>
           ) : (
@@ -714,7 +822,7 @@ function ChatPage() {
           <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
             <MegaphoneIcon className="h-8 w-8 text-blue-500 shrink-0" />
             <p className="text-sm text-blue-700">
-              This message will be sent to <strong>all field agents</strong> simultaneously.
+              This message will be sent to <strong>all field agents</strong> as a push notification. It will not create individual chat threads.
             </p>
           </div>
           <textarea

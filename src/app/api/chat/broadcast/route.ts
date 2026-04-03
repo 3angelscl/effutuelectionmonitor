@@ -4,9 +4,49 @@ import prisma from '@/lib/prisma';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 
-// 5 broadcast per hour per admin
+// 5 broadcasts per hour per admin
 const chatBroadcastRateLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
 
+/**
+ * GET /api/chat/broadcast
+ * Returns the admin's recent broadcast history (from ActivityLog).
+ */
+export async function GET() {
+  try {
+    const { user } = await requireRole(['ADMIN', 'OFFICER']);
+
+    const logs = await prisma.activityLog.findMany({
+      where: { userId: user.id, title: 'CREATE Broadcast' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { id: true, detail: true, metadata: true, createdAt: true },
+    });
+
+    const broadcasts = logs.map((log) => {
+      let sentTo = 0;
+      let message = log.detail || '';
+      try {
+        const meta = JSON.parse(log.metadata || '{}');
+        sentTo = meta.recipientCount || 0;
+        if (meta.messagePreview) message = meta.messagePreview;
+      } catch {
+        // use defaults
+      }
+      return { id: log.id, message, sentTo, createdAt: log.createdAt };
+    });
+
+    return NextResponse.json({ broadcasts });
+  } catch (error) {
+    if (error instanceof ApiError) return error.toResponse();
+    return NextResponse.json({ error: 'Failed to get broadcast history' }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/chat/broadcast
+ * Sends a broadcast notification to all agents without creating individual
+ * ChatMessage records (which would bloat the admin's conversation list).
+ */
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(['ADMIN', 'OFFICER']);
@@ -25,9 +65,8 @@ export async function POST(request: NextRequest) {
     const adminName = user.name;
     const trimmedMessage = message.trim();
 
-    // Get all agents
     const agents = await prisma.user.findMany({
-      where: { role: 'AGENT' },
+      where: { role: 'AGENT', deletedAt: null },
       select: { id: true },
     });
 
@@ -40,22 +79,14 @@ export async function POST(request: NextRequest) {
       throw new ApiError(429, 'Broadcast limit reached (max 5 per hour). Please try again later.');
     }
 
-    // Create a ChatMessage for each agent
-    await prisma.chatMessage.createMany({
-      data: agents.map((agent) => ({
-        senderId: adminId,
-        receiverId: agent.id,
-        message: trimmedMessage,
-      })),
-    });
-
-    // Create a Notification for each agent
+    // Deliver via Notification only — avoids creating 150+ individual ChatMessage
+    // records that would flood the admin's conversation sidebar.
     await prisma.notification.createMany({
       data: agents.map((agent) => ({
         userId: agent.id,
         type: 'BROADCAST',
         title: `Broadcast from ${adminName}`,
-        message: trimmedMessage.slice(0, 100),
+        message: trimmedMessage,
         link: '/agent/chat',
       })),
     });
@@ -65,8 +96,8 @@ export async function POST(request: NextRequest) {
       action: 'CREATE',
       entity: 'Broadcast',
       entityId: `bulk_${Date.now()}`,
-      detail: `Sent broadcast message to ${agents.length} agents: "${trimmedMessage.slice(0, 50)}..."`,
-      metadata: { recipientCount: agents.length, messagePreview: trimmedMessage.slice(0, 50) },
+      detail: `Sent broadcast to ${agents.length} agents: "${trimmedMessage.slice(0, 50)}${trimmedMessage.length > 50 ? '...' : ''}"`,
+      metadata: { recipientCount: agents.length, messagePreview: trimmedMessage },
     });
 
     return NextResponse.json({ success: true, sentTo: agents.length });
