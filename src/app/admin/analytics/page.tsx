@@ -139,7 +139,7 @@ export default function AnalyticsPage() {
     fetcher
   );
 
-  const wards = wardData || [];
+  const wards = Array.isArray(wardData) ? wardData : [];
   const ageBuckets = demoData?.ageBuckets || [];
   const compareElections = compareData?.elections || [];
   const compareSeries = compareData?.series || [];
