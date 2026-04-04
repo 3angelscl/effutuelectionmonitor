@@ -47,10 +47,10 @@ export default function AdminLayout({
 
   return (
     <AdminSidebarContext.Provider value={{ open: openSidebar }}>
-      <div className="flex h-screen overflow-hidden bg-gray-50">
+      <div suppressHydrationWarning className="flex h-screen overflow-hidden bg-gray-50">
 
         {/* ── Desktop sidebar ── */}
-        <aside className="hidden md:flex md:w-64 md:shrink-0 md:border-r md:border-gray-200 md:h-full md:overflow-y-auto">
+        <aside suppressHydrationWarning className="hidden md:flex md:w-64 md:shrink-0 md:border-r md:border-gray-200 md:h-full md:overflow-y-auto">
           <AdminSidebar />
         </aside>
 
@@ -71,10 +71,10 @@ export default function AdminLayout({
         )}
 
         {/* ── Main content ── */}
-        <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+        <main suppressHydrationWarning className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           {/* Scrollable wrapper — pages that overflow will scroll here.
               The chat page locks itself to this height via flex-1 + overflow-hidden. */}
-          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto pb-16 md:pb-0">
+          <div suppressHydrationWarning className="flex-1 flex flex-col min-h-0 overflow-y-auto pb-16 md:pb-0">
             {children}
           </div>
         </main>
