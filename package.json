@@ -25,6 +25,7 @@
     "@types/pg": "^8.20.0",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",
+    "@vercel/functions": "^3.4.3",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",
     "date-fns": "^4.1.0",

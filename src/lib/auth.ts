@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { verifySync } from 'otplib';
 import prisma from './prisma';
 import { createRateLimiter } from './rate-limit';
+import { decrypt } from './crypto';
 
 const authLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
 
@@ -56,10 +57,12 @@ export const authOptions: NextAuthOptions = {
           if (!credentials.totp) {
             throw new Error('2FA_REQUIRED');
           }
+          // Decrypt the stored secret (handles both encrypted and legacy plaintext)
+          const totpSecret = decrypt(user.twoFactorSecret!);
           // Verify TOTP code
           const result = verifySync({
             token: credentials.totp,
-            secret: user.twoFactorSecret!,
+            secret: totpSecret,
           });
           const isValid = result.valid;
           if (!isValid) {

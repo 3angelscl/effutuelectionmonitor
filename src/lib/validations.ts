@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { sanitizeText } from './sanitize';
+import { ApiError } from './api-auth';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -52,11 +53,13 @@ export function parseData<T extends z.ZodTypeAny>(
   return result.data;
 }
 
-export class ValidationError {
+export class ValidationError extends ApiError {
   constructor(
-    public readonly message: string,
+    message: string,
     public readonly fieldErrors?: { field: string; message: string }[],
-  ) {}
+  ) {
+    super(400, message);
+  }
 
   toResponse() {
     return NextResponse.json(
@@ -261,6 +264,9 @@ export const resultSubmitSchema = z.object({
       z.object({
         candidateId: z.string().uuid(),
         votes: z.number().int().min(0, 'Votes must be a non-negative integer').max(999999, 'Vote count exceeds maximum allowed'),
+        // Optional optimistic-concurrency token. When present, the server will
+        // only update if the stored row's version matches — otherwise 409.
+        expectedVersion: z.number().int().min(1).optional(),
       }),
     )
     .min(1, 'At least one result is required'),

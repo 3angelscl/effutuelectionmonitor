@@ -185,6 +185,7 @@ model ElectionResult {
   resultType      String    @default("PROVISIONAL") // PROVISIONAL or FINAL
   submittedById   String
   electionId      String
+  version         Int       @default(1)             // Incremented on each update for optimistic concurrency
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

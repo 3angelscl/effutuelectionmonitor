@@ -4,14 +4,16 @@ import bcrypt from 'bcryptjs';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
 import { resetPasswordSchema, parseData, ValidationError } from '@/lib/validations';
+import { getClientIp } from '@/lib/client-ip';
 
 // 10 reset attempts per 15 minutes per IP (prevents brute-force token guessing)
 const resetLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit by IP
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    // Rate limit by the Vercel-verified client IP — these headers are set
+    // by the platform edge and cannot be spoofed by clients.
+    const ip = getClientIp(request);
     const { success } = await resetLimiter.check(ip);
     if (!success) {
       return NextResponse.json(

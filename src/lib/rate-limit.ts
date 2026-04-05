@@ -42,8 +42,17 @@ export function createRateLimiter(options: RateLimiterOptions) {
     };
   }
 
-  // Graceful Fallback: Local In-Memory Rate Limiter
-  console.warn('[RateLimit] Upstash Redis credentials not found. Falling back to local in-memory rate limiter.');
+  // Production requires Upstash — in-memory state is not shared across
+  // server replicas, so rate limits silently stop working under load.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production. ' +
+      'The in-memory fallback is not safe for multi-instance deployments.',
+    );
+  }
+
+  // Development only: local in-memory sliding window
+  console.warn('[RateLimit] Upstash Redis credentials not found. Using in-memory fallback (development only).');
   
   interface RateLimitEntry {
     count: number;

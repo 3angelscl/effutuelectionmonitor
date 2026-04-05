@@ -46,10 +46,10 @@ export async function GET(request: NextRequest) {
     // Use aggregate counts instead of loading all voter records
     const stationIds = stations.map((s) => s.id);
 
-    // Count registered voters per station
+    // Count registered voters per station — exclude soft-deleted records
     const registeredCounts = await prisma.voter.groupBy({
       by: ['stationId'],
-      where: { stationId: { in: stationIds } },
+      where: { stationId: { in: stationIds }, deletedAt: null },
       _count: { id: true },
     });
     const registeredMap = new Map(registeredCounts.map((r) => [r.stationId, r._count.id]));

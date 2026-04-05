@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/audit';
 import { parseData, ValidationError, passwordComplexityMsg, passwordRegex } from '@/lib/validations';
 import { z } from 'zod';
+import { encryptField, decryptField } from '@/lib/crypto';
 
 // Local schema for profile updates
 const profileUpdateSchema = z.object({
@@ -33,7 +34,7 @@ export async function GET() {
       select: { id: true, name: true, email: true, phone: true, photo: true },
     });
     if (!profile) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    return NextResponse.json(profile);
+    return NextResponse.json({ ...profile, phone: decryptField(profile.phone) });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
     return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
@@ -82,7 +83,7 @@ export async function PUT(request: NextRequest) {
     // Profile update flow
     const updateData: Record<string, string | null> = {};
     if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone || null;
+    if (phone !== undefined) updateData.phone = encryptField(phone || null);
     if (data.photo !== undefined) updateData.photo = data.photo;
 
     if (Object.keys(updateData).length === 0) {
@@ -104,7 +105,7 @@ export async function PUT(request: NextRequest) {
       metadata: { updatedFields: Object.keys(updateData) },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, phone: decryptField(updated.phone) });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
     console.error('Profile update error:', error);

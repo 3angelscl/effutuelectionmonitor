@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/audit';
 import { requireRole, ApiError, apiHandler } from '@/lib/api-auth';
 import { parseBody, userCreateSchema, ValidationError } from '@/lib/validations';
+import { encryptField, decryptField } from '@/lib/crypto';
 
 export const GET = apiHandler(async () => {
   await requireRole(['ADMIN', 'OFFICER']);
@@ -23,7 +24,9 @@ export const GET = apiHandler(async () => {
     orderBy: { name: 'asc' },
   });
 
-  return NextResponse.json(users);
+  // Decrypt phone numbers before returning
+  const decrypted = users.map((u) => ({ ...u, phone: decryptField(u.phone) }));
+  return NextResponse.json(decrypted);
 });
 
 export const POST = apiHandler(async (request: Request) => {
@@ -50,7 +53,7 @@ export const POST = apiHandler(async (request: Request) => {
       password: hashedPassword,
       name: data.name,
       role: data.role,
-      phone: data.phone || null,
+      phone: encryptField(data.phone || null),
       photo: data.photo || null,
     },
     select: {

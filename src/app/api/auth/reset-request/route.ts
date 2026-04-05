@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import crypto from 'crypto';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/client-ip';
 
 // 5 reset requests per 15 minutes per IP
 const resetRequestLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5 });
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit by IP
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    // Rate limit by the Vercel-verified client IP (unspoofable at the edge).
+    const ip = getClientIp(request);
     const { success } = await resetRequestLimiter.check(ip);
     if (!success) {
       return NextResponse.json(

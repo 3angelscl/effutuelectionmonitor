@@ -10,6 +10,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { validateCsrf } from '@/lib/csrf';
+import { logger } from '@/lib/logger';
 
 export interface AuthUser {
   id: string;
@@ -79,12 +81,20 @@ export function apiHandler(
 ) {
   return async (request: Request) => {
     try {
+      // Validate CSRF for all state-changing requests
+      const csrfError = validateCsrf(request);
+      if (csrfError) return csrfError;
+
       return await handler(request);
     } catch (error) {
       if (error instanceof ApiError) {
         return error.toResponse();
       }
-      console.error('Unhandled API error:', error);
+      logger.error('Unhandled API error', {
+        method: request.method,
+        url: request.url,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return NextResponse.json(
         { error: 'Internal server error' },
         { status: 500 },

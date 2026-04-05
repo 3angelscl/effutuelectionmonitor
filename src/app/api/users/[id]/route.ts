@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
 import { parseBody, userUpdateSchema } from '@/lib/validations';
+import { encryptField, decryptField } from '@/lib/crypto';
 
 export async function DELETE(
   _request: NextRequest,
@@ -57,6 +58,10 @@ export async function PATCH(
     const { password, ...data } = body;
 
     const updateData: Record<string, any> = { ...data };
+    // Encrypt phone before writing to DB
+    if ('phone' in updateData) {
+      updateData.phone = encryptField(updateData.phone);
+    }
     
     if (password) {
       updateData.password = await bcrypt.hash(password, 12);
@@ -91,7 +96,7 @@ export async function PATCH(
       metadata: { updatedFields: Object.keys(data) },
     });
 
-    return NextResponse.json(user);
+    return NextResponse.json({ ...user, phone: decryptField(user.phone) });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
     console.error('Update user error:', error);

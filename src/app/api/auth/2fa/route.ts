@@ -5,9 +5,34 @@ import prisma from '@/lib/prisma';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { encrypt, decrypt } from '@/lib/crypto';
+import { logger } from '@/lib/logger';
 
 // 5 verification attempts per 5 minutes per email/user — prevents brute-force of 6-digit TOTP
 const twoFaLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 5 });
+
+/**
+ * Exponential TOTP backoff schedule.
+ * Attempts are cumulative (never reset to 0 after a lock expiry, so escalation persists).
+ *
+ *   attempts 1–2  → no lock
+ *   attempts 3–5  → lock  1 min
+ *   attempts 6–8  → lock  5 min
+ *   attempts 9–11 → lock 15 min
+ *   attempts 12+  → lock  1 hour
+ */
+function totpLockDurationMs(totalAttempts: number): number {
+  if (totalAttempts < 3)  return 0;
+  if (totalAttempts < 6)  return 1  * 60 * 1000;
+  if (totalAttempts < 9)  return 5  * 60 * 1000;
+  if (totalAttempts < 12) return 15 * 60 * 1000;
+  return 60 * 60 * 1000;
+}
+
+function lockedUntilDate(totalAttempts: number): Date | null {
+  const ms = totpLockDurationMs(totalAttempts);
+  return ms > 0 ? new Date(Date.now() + ms) : null;
+}
 
 // GET - Generate 2FA secret and QR code
 export async function GET() {
@@ -30,12 +55,14 @@ export async function GET() {
 
     // Reuse an existing pending secret so that refreshing the page does not
     // invalidate a QR code the user has already scanned but not yet verified.
-    const secret = user.twoFactorSecret ?? generateSecret();
+    // Decrypt the stored secret (may be plaintext for legacy rows).
+    const existingSecret = user.twoFactorSecret ? decrypt(user.twoFactorSecret) : null;
+    const secret = existingSecret ?? generateSecret();
 
-    if (!user.twoFactorSecret) {
+    if (!existingSecret) {
       await prisma.user.update({
         where: { id: userId },
-        data: { twoFactorSecret: secret },
+        data: { twoFactorSecret: encrypt(secret) },
       });
     }
 
@@ -44,12 +71,12 @@ export async function GET() {
 
     return NextResponse.json({ secret, qrCode, enabled: false });
   } catch (error) {
-    console.error('2FA setup error:', error);
+    logger.error('2FA setup error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Failed to setup 2FA' }, { status: 500 });
   }
 }
 
-// POST - Verify and enable 2FA, or verify during login
+// POST - Verify and enable/disable 2FA, or verify during login
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -76,29 +103,27 @@ export async function POST(request: NextRequest) {
 
       // Hard lockout check
       if (user.totpLockUntil && user.totpLockUntil > new Date()) {
+        const secondsLeft = Math.ceil((user.totpLockUntil.getTime() - Date.now()) / 1000);
         return NextResponse.json(
-          { error: '2FA locked due to too many failed attempts. Try again in 5 minutes.' },
+          { error: `2FA locked due to too many failed attempts. Try again in ${secondsLeft}s.` },
           { status: 429 },
         );
       }
 
-      const result = verifySync({ token: code, secret: user.twoFactorSecret });
+      const secret = decrypt(user.twoFactorSecret);
+      const result = verifySync({ token: code, secret });
+
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;
-        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
-
+        const lockUntil = lockedUntilDate(newAttempts);
         await prisma.user.update({
           where: { id: user.id },
-          data: {
-            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
-            totpLockUntil: lockUntil,
-          },
+          data: { totpAttempts: newAttempts, totpLockUntil: lockUntil },
         });
-
         return NextResponse.json({ error: 'Invalid 2FA code' }, { status: 400 });
       }
 
-      // Success: Reset attempts
+      // Success: reset attempts
       await prisma.user.update({
         where: { id: user.id },
         data: { totpAttempts: 0, totpLockUntil: null },
@@ -107,7 +132,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ valid: true });
     }
 
-    // Enable 2FA (requires session)
+    // All other actions require a session
     const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -120,84 +145,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Setup 2FA first' }, { status: 400 });
     }
 
+    // Hard lockout check (shared for enable/disable actions)
+    if (user.totpLockUntil && user.totpLockUntil > new Date()) {
+      const secondsLeft = Math.ceil((user.totpLockUntil.getTime() - Date.now()) / 1000);
+      return NextResponse.json(
+        { error: `Too many failed attempts. Try again in ${secondsLeft}s.` },
+        { status: 429 },
+      );
+    }
+
     if (action === 'enable') {
-      // Rate limit by userId
       const { success: rateLimitOk } = await twoFaLimiter.check(`setup:${userId}`);
       if (!rateLimitOk) {
         return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
       }
 
-      if (user.totpLockUntil && user.totpLockUntil > new Date()) {
-        return NextResponse.json(
-          { error: 'Too many failed attempts. Try again in 5 minutes.' },
-          { status: 429 },
-        );
-      }
+      const secret = decrypt(user.twoFactorSecret);
+      const result = verifySync({ token: code, secret });
 
-      const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;
-        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
-
+        const lockUntil = lockedUntilDate(newAttempts);
         await prisma.user.update({
           where: { id: userId },
-          data: {
-            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
-            totpLockUntil: lockUntil,
-          },
+          data: { totpAttempts: newAttempts, totpLockUntil: lockUntil },
         });
         return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
       }
 
       await prisma.user.update({
         where: { id: userId },
-        data: { 
-          twoFactorEnabled: true,
-          totpAttempts: 0,
-          totpLockUntil: null
-        },
+        data: { twoFactorEnabled: true, totpAttempts: 0, totpLockUntil: null },
       });
 
       return NextResponse.json({ enabled: true });
     }
 
     if (action === 'disable') {
-      // Rate limit by userId to prevent brute-force
       const { success: rateLimitOk } = await twoFaLimiter.check(`disable:${userId}`);
       if (!rateLimitOk) {
         return NextResponse.json({ error: 'Too many attempts. Try again in 5 minutes.' }, { status: 429 });
       }
 
-      if (user.totpLockUntil && user.totpLockUntil > new Date()) {
-        return NextResponse.json(
-          { error: 'Too many failed attempts. Try again in 5 minutes.' },
-          { status: 429 },
-        );
-      }
+      const secret = decrypt(user.twoFactorSecret);
+      const result = verifySync({ token: code, secret });
 
-      const result = verifySync({ token: code, secret: user.twoFactorSecret });
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;
-        const lockUntil = newAttempts >= 3 ? new Date(Date.now() + 5 * 60 * 1000) : user.totpLockUntil;
-
+        const lockUntil = lockedUntilDate(newAttempts);
         await prisma.user.update({
           where: { id: userId },
-          data: {
-            totpAttempts: newAttempts >= 3 ? 0 : newAttempts,
-            totpLockUntil: lockUntil,
-          },
+          data: { totpAttempts: newAttempts, totpLockUntil: lockUntil },
         });
         return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
       }
 
       await prisma.user.update({
         where: { id: userId },
-        data: { 
-          twoFactorEnabled: false, 
-          twoFactorSecret: null,
-          totpAttempts: 0,
-          totpLockUntil: null
-        },
+        data: { twoFactorEnabled: false, twoFactorSecret: null, totpAttempts: 0, totpLockUntil: null },
       });
 
       return NextResponse.json({ enabled: false });
@@ -205,7 +210,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
-    console.error('2FA verify error:', error);
+    logger.error('2FA verify error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Failed to verify 2FA' }, { status: 500 });
   }
 }
