@@ -148,12 +148,21 @@ export default function ElectionResultsPage() {
             {stats.candidateResults.map((candidate) => (
               <div key={candidate.candidateId}>
                 <div className="flex items-center gap-3 mb-2">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                    style={{ backgroundColor: candidate.color }}
-                  >
-                    {candidate.party}
-                  </div>
+                  {candidate.photo ? (
+                    <img
+                      src={candidate.photo}
+                      alt={candidate.candidateName}
+                      className="w-10 h-10 rounded-full object-cover shrink-0"
+                      style={{ boxShadow: `0 0 0 2px ${candidate.color}` }}
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                      style={{ backgroundColor: candidate.color }}
+                    >
+                      {candidate.party}
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="font-semibold text-gray-900">{candidate.candidateName}</p>
                     <p className="text-xs text-gray-500">{candidate.partyFull || candidate.party}</p>

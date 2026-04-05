@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
         party: candidate.party,
         partyFull: candidate.partyFull,
         color: candidate.color || '#3B82F6',
+        photo: candidate.photo || null,
         totalVotes,
         percentage: totalValidVotes > 0 ? Math.round((totalVotes / totalValidVotes) * 1000) / 10 : 0,
       };

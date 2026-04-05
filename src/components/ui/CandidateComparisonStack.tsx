@@ -7,6 +7,7 @@ interface CandidateData {
   candidateName: string;
   party: string;
   color: string;
+  photo?: string | null;
   totalVotes: number;
   percentage: number;
 }
@@ -33,6 +34,44 @@ export default function CandidateComparisonStack({ candidate1, candidate2, total
   const c1Percentage = totalVotes > 0 ? Math.round((c1Votes / totalVotes) * 1000) / 10 : 0;
   const c2Percentage = totalVotes > 0 ? Math.round((c2Votes / totalVotes) * 1000) / 10 : 0;
   const otherPercentage = Math.max(0, 100 - c1Percentage - c2Percentage);
+
+  const renderAvatar = (candidate: CandidateData | null) => {
+    const base = 'w-14 h-14 flex-none rounded-full flex items-center justify-center overflow-hidden';
+    if (!candidate) {
+      return (
+        <div className={`${base} bg-gray-100 ring-2 ring-gray-200`}>
+          <span className="text-[10px] font-bold text-gray-400">N/A</span>
+        </div>
+      );
+    }
+    const ringStyle = { boxShadow: `0 0 0 2px ${candidate.color}` };
+    if (candidate.photo) {
+      return (
+        <div className={`${base} bg-gray-100`} style={ringStyle}>
+          <img
+            src={candidate.photo}
+            alt={candidate.candidateName}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      );
+    }
+    const initials = candidate.candidateName
+      .split(' ')
+      .map((s) => s[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+    return (
+      <div
+        className={`${base} text-white font-black text-base`}
+        style={{ backgroundColor: candidate.color, ...ringStyle }}
+      >
+        {initials || '?'}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -100,40 +139,48 @@ export default function CandidateComparisonStack({ candidate1, candidate2, total
       </div>
 
       <div className="grid grid-cols-2 gap-3">
+        {/* Candidate 1 card — photo on left, percentage on the right (inner) edge */}
         <div
-          className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm transition-all"
+          className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl shadow-sm p-3 transition-all"
           style={{ borderLeft: `4px solid ${candidate1?.color || '#e2e8f0'}` }}
         >
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-            {candidate1?.candidateName || 'Candidate 1'}
-          </p>
-          <div className="flex items-baseline gap-1">
-            <span className="text-lg font-black text-gray-900">
-              {formatNumber(c1Votes)}
-            </span>
-            <span className="text-[10px] font-bold text-gray-400">VOTES</span>
-            <span className="text-xs font-bold ml-auto" style={{ color: candidate1?.color || '#94a3b8' }}>
-              {c1Percentage}%
-            </span>
+          {renderAvatar(candidate1)}
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5 truncate">
+              {candidate1?.candidateName || 'Candidate 1'}
+            </p>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-black text-gray-900">
+                {formatNumber(c1Votes)}
+              </span>
+              <span className="text-[10px] font-bold text-gray-400">VOTES</span>
+            </div>
           </div>
+          <span className="text-sm font-black flex-none" style={{ color: candidate1?.color || '#94a3b8' }}>
+            {c1Percentage}%
+          </span>
         </div>
 
+        {/* Candidate 2 card — mirrored: percentage on the left (inner) edge, photo on the right */}
         <div
-          className="p-3 bg-white border border-gray-100 rounded-xl shadow-sm transition-all"
-          style={{ borderLeft: `4px solid ${candidate2?.color || '#e2e8f0'}` }}
+          className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl shadow-sm p-3 transition-all"
+          style={{ borderRight: `4px solid ${candidate2?.color || '#e2e8f0'}` }}
         >
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-            {candidate2?.candidateName || 'Candidate 2'}
-          </p>
-          <div className="flex items-baseline gap-1">
-            <span className="text-lg font-black text-gray-900">
-              {formatNumber(c2Votes)}
-            </span>
-            <span className="text-[10px] font-bold text-gray-400">VOTES</span>
-            <span className="text-xs font-bold ml-auto" style={{ color: candidate2?.color || '#94a3b8' }}>
-              {c2Percentage}%
-            </span>
+          <span className="text-sm font-black flex-none" style={{ color: candidate2?.color || '#94a3b8' }}>
+            {c2Percentage}%
+          </span>
+          <div className="flex-1 min-w-0 flex flex-col justify-center items-end text-right">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5 truncate max-w-full">
+              {candidate2?.candidateName || 'Candidate 2'}
+            </p>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-black text-gray-900">
+                {formatNumber(c2Votes)}
+              </span>
+              <span className="text-[10px] font-bold text-gray-400">VOTES</span>
+            </div>
           </div>
+          {renderAvatar(candidate2)}
         </div>
       </div>
 
