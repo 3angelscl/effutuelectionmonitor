@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useState, useEffect, useRef, useMemo } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { useSession } from 'next-auth/react';
@@ -23,8 +24,6 @@ import {
 } from '@heroicons/react/24/outline';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Conversation {
   user: {
@@ -157,6 +156,7 @@ function ChatPage() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatSearch, setNewChatSearch] = useState('');
   const [showBroadcastHistory, setShowBroadcastHistory] = useState(false);
+  const [selectedUserPreview, setSelectedUserPreview] = useState<Conversation['user'] | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -206,7 +206,22 @@ function ChatPage() {
   const selectedConv = useMemo(() => {
     const existing = conversations.find((c) => c.user.id === selectedUserId);
     if (existing) return existing;
-    if (!selectedUserId || !allUsersData) return null;
+    if (!selectedUserId) return null;
+
+    const previewUser = selectedUserPreview?.id === selectedUserId
+      ? selectedUserPreview
+      : null;
+
+    if (previewUser) {
+      return {
+        user: previewUser,
+        lastMessage: '',
+        lastMessageAt: new Date(0).toISOString(),
+        unreadCount: 0,
+      } satisfies Conversation;
+    }
+
+    if (!allUsersData) return null;
     const u = allUsersData.find((u) => u.id === selectedUserId);
     if (!u) return null;
     return {
@@ -222,7 +237,7 @@ function ChatPage() {
       lastMessageAt: new Date(0).toISOString(),
       unreadCount: 0,
     } satisfies Conversation;
-  }, [conversations, selectedUserId, allUsersData]);
+  }, [conversations, selectedUserId, allUsersData, selectedUserPreview]);
 
   const filteredConversations = useMemo(() => {
     if (!searchQuery.trim()) return conversations;
@@ -482,6 +497,14 @@ function ChatPage() {
                     <button
                       key={u.id}
                       onClick={() => {
+                        setSelectedUserPreview({
+                          id: u.id,
+                          name: u.name,
+                          email: u.email,
+                          photo: u.photo,
+                          role: u.role,
+                          station: station ?? null,
+                        });
                         setSelectedUserId(u.id);
                         setShowNewChat(false);
                         setNewChatSearch('');
@@ -537,7 +560,10 @@ function ChatPage() {
               return (
                 <button
                   key={conv.user.id}
-                  onClick={() => setSelectedUserId(conv.user.id)}
+                  onClick={() => {
+                    setSelectedUserId(conv.user.id);
+                    setSelectedUserPreview(null);
+                  }}
                   className={`w-full px-4 py-3.5 flex items-start gap-3 border-b border-gray-50 text-left transition-all ${
                     isSelected
                       ? 'bg-blue-50 border-l-[3px] border-l-blue-600'
@@ -607,7 +633,10 @@ function ChatPage() {
               {/* Chat header */}
               <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-3 shrink-0 shadow-sm">
                 <button
-                  onClick={() => setSelectedUserId(null)}
+                  onClick={() => {
+                    setSelectedUserId(null);
+                    setSelectedUserPreview(null);
+                  }}
                   className="md:hidden p-1.5 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
                 >
                   <ArrowLeftIcon className="h-5 w-5" />
