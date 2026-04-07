@@ -9,9 +9,14 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const voterId = String(formData.get('voterId') || '').trim();
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    }
+
+    if (!voterId) {
+      return NextResponse.json({ error: 'Voter ID is required to name the photo file.' }, { status: 400 });
     }
 
     const validTypes = ['image/jpeg', 'image/png'];
@@ -35,7 +40,12 @@ export async function POST(request: NextRequest) {
     const rawExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const allowedExts = ['jpg', 'jpeg', 'png'];
     const ext = allowedExts.includes(rawExt) ? rawExt : 'jpg';
-    const filename = `voter-${Date.now()}.${ext}`;
+    const safeVoterId = voterId.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeVoterId) {
+      return NextResponse.json({ error: 'Voter ID contains no valid filename characters.' }, { status: 400 });
+    }
+
+    const filename = `voter-${safeVoterId}.${ext}`;
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'voters');
     const filePath = path.join(uploadDir, filename);
 

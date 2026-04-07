@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import useSWRInfinite from 'swr/infinite';
@@ -23,7 +24,6 @@ import {
   PhotoIcon,
 } from '@heroicons/react/24/outline';
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 const PAGE_SIZE = 30;
 
 interface VoterData {
@@ -207,10 +207,17 @@ export default function VoterManagement() {
   };
 
   const handlePhotoUpload = async (file: File, isAdd: boolean = false) => {
+    const voterId = (isAdd ? addForm.voterId : editForm.voterId).trim();
+    if (!voterId) {
+      setError('Enter the voter ID before uploading a photo');
+      return;
+    }
+
     setPhotoUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('voterId', voterId);
       const res = await fetch('/api/voters/photo', { method: 'POST', body: formData });
       if (!res.ok) {
         const data = await res.json();
@@ -327,25 +334,43 @@ export default function VoterManagement() {
   };
 
   // --- Delete All Voters ---
+  const [deleteAllPassword, setDeleteAllPassword] = useState('');
+  const [deleteAllPasswordError, setDeleteAllPasswordError] = useState('');
+
   const handleDeleteAll = async () => {
+    if (!deleteAllPassword) {
+      setDeleteAllPasswordError('Please enter your password to confirm');
+      return;
+    }
+    setDeleteAllPasswordError('');
     setDeletingAll(true);
     try {
       const params = new URLSearchParams();
       if (psFilter) params.set('stationId', psFilter);
-      const res = await fetch(`/api/voters?deleteAll=true&${params}`, { method: 'DELETE' });
+      params.set('deleteAll', 'true');
+      const res = await fetch(`/api/voters?${params}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deleteAllPassword }),
+      });
       if (!res.ok) {
         const data = await res.json();
-        toast.error(data.error || 'Failed to delete voters');
+        if (data.error === 'Invalid password') {
+          setDeleteAllPasswordError('Incorrect password. Please try again.');
+        } else {
+          toast.error(data.error || 'Failed to delete voters');
+        }
         return;
       }
       const data = await res.json();
       toast.success(`Successfully deleted ${data.deletedCount} voters`);
       mutate();
+      setDeleteAllOpen(false);
+      setDeleteAllPassword('');
     } catch {
       toast.error('Failed to delete voters. Please try again.');
     } finally {
       setDeletingAll(false);
-      setDeleteAllOpen(false);
     }
   };
 
@@ -436,7 +461,7 @@ export default function VoterManagement() {
                   setUploadModalOpen(true);
                 }}
               >
-                Upload TEST VERIFY
+                Upload
               </Button>
             )}
             {canModify && (
@@ -865,16 +890,63 @@ export default function VoterManagement() {
         variant="danger"
       />
 
-      <ConfirmModal
+      <Modal
         isOpen={deleteAllOpen}
-        onClose={() => setDeleteAllOpen(false)}
-        onConfirm={handleDeleteAll}
+        onClose={() => { setDeleteAllOpen(false); setDeleteAllPassword(''); setDeleteAllPasswordError(''); }}
         title="Delete All Voters"
-        message={`Are you sure you want to permanently delete ${deleteAllLabel}? This will also delete all associated turnout records. This action cannot be undone.`}
-        confirmLabel="Delete All"
-        variant="danger"
-        loading={deletingAll}
-      />
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-red-50 shrink-0">
+              <TrashIcon className="h-6 w-6 text-red-500" />
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              Are you sure you want to permanently delete {deleteAllLabel}? This will also delete all associated turnout records. This action cannot be undone.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Enter your password to confirm
+            </label>
+            <input
+              type="password"
+              value={deleteAllPassword}
+              onChange={(e) => { setDeleteAllPassword(e.target.value); setDeleteAllPasswordError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDeleteAll(); }}
+              placeholder="Your admin password"
+              className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                deleteAllPasswordError
+                  ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
+                  : 'border-gray-200 focus:ring-primary-500/20 focus:border-primary-500'
+              }`}
+              autoFocus
+            />
+            {deleteAllPasswordError && (
+              <p className="text-xs text-red-600 mt-1">{deleteAllPasswordError}</p>
+            )}
+          </div>
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => { setDeleteAllOpen(false); setDeleteAllPassword(''); setDeleteAllPasswordError(''); }}
+              disabled={deletingAll}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteAll}
+              loading={deletingAll}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={!deleteAllPassword}
+            >
+              Delete All
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );
