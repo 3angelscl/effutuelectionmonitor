@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { logAudit } from '@/lib/audit';
 import { requireRole, ApiError, apiHandler } from '@/lib/api-auth';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, userCreateSchema, ValidationError } from '@/lib/validations';
 import { encryptField, decryptField } from '@/lib/crypto';
 
@@ -82,6 +83,10 @@ export const POST = apiHandler(async (request: Request) => {
     detail: `Created user "${data.name}" (${data.role})`,
     metadata: { email: data.email, role: data.role },
   });
+
+  if (data.role === 'AGENT' && data.stationId) {
+    await invalidateLiveSummary();
+  }
 
   return NextResponse.json(user, { status: 201 });
 });

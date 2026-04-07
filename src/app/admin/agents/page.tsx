@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
@@ -27,8 +28,6 @@ import {
   XCircleIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface UserData {
   id: string;
@@ -90,12 +89,15 @@ export default function AgentManagement() {
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [bulkAssignments, setBulkAssignments] = useState<Record<string, string>>({});
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkMode, setBulkMode] = useState<'assign' | 'unassign'>('assign');
+  const [selectedBulkUnassignIds, setSelectedBulkUnassignIds] = useState<string[]>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [unassignTarget, setUnassignTarget] = useState<UserData | null>(null);
 
   const handlePhotoUpload = async (file: File, target: 'create' | 'edit') => {
     setUploading(true);
@@ -297,6 +299,7 @@ export default function AgentManagement() {
 
   // --- Bulk Assign ---
   const unassignedAgents = agents.filter((a) => a.assignedStations.length === 0);
+  const assignedAgents = agents.filter((a) => a.assignedStations.length > 0);
 
   const handleBulkAssign = async () => {
     const assignments = Object.entries(bulkAssignments)
@@ -323,6 +326,61 @@ export default function AgentManagement() {
     } catch (err) {
       console.error('Bulk assign error:', err);
       toast.error('Bulk assign failed. Please try again.');
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const handleUnassign = async (agent: UserData) => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/stations/unassign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id }),
+      });
+      if (res.ok) {
+        toast.success('Agent unassigned successfully');
+        mutateUsers();
+        mutateStations();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Unassign failed');
+      }
+    } catch (err) {
+      console.error('Unassign error:', err);
+      toast.error('Unassign failed. Please try again.');
+    } finally {
+      setSaving(false);
+      setUnassignTarget(null);
+    }
+  };
+
+  const handleBulkUnassign = async () => {
+    if (selectedBulkUnassignIds.length === 0) return;
+    setBulkAssigning(true);
+    try {
+      const res = await fetch('/api/stations/unassign-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentIds: selectedBulkUnassignIds }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(
+          `${data.unassignedAgents} agent${data.unassignedAgents !== 1 ? 's' : ''} unassigned successfully`
+        );
+        setShowBulkAssign(false);
+        setSelectedBulkUnassignIds([]);
+        mutateUsers();
+        mutateStations();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Bulk unassign failed');
+      }
+    } catch (err) {
+      console.error('Bulk unassign error:', err);
+      toast.error('Bulk unassign failed. Please try again.');
     } finally {
       setBulkAssigning(false);
     }
@@ -381,14 +439,14 @@ export default function AgentManagement() {
 
         {/* Search + Actions row */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[300px]">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search by name, email, phone, or station..."
-              className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              className="pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
             />
           </div>
           {searchQuery && (
@@ -399,9 +457,15 @@ export default function AgentManagement() {
               <Button
                 variant="outline"
                 icon={<ArrowsRightLeftIcon className="h-4 w-4" />}
-                onClick={() => { setError(''); setBulkAssignments({}); setShowBulkAssign(true); }}
+                onClick={() => {
+                  setError('');
+                  setBulkMode('assign');
+                  setBulkAssignments({});
+                  setSelectedBulkUnassignIds([]);
+                  setShowBulkAssign(true);
+                }}
               >
-                Bulk Assign
+                Bulk Update
               </Button>
               <Button
                 variant="outline"
@@ -493,13 +557,22 @@ export default function AgentManagement() {
                               <PencilIcon className="h-4 w-4" />
                             </button>
                             {isAssigned ? (
-                              <button
-                                onClick={() => openAssignModal(agent)}
-                                className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                                title="Reassign"
-                              >
-                                <ArrowsRightLeftIcon className="h-4 w-4" />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => openAssignModal(agent)}
+                                  className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                                  title="Reassign"
+                                >
+                                  <ArrowsRightLeftIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => setUnassignTarget(agent)}
+                                  className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                  title="Unassign"
+                                >
+                                  <XCircleIcon className="h-4 w-4" />
+                                </button>
+                              </>
                             ) : (
                               <button
                                 onClick={() => openAssignModal(agent)}
@@ -849,60 +922,134 @@ export default function AgentManagement() {
       <Modal
         isOpen={showBulkAssign}
         onClose={() => setShowBulkAssign(false)}
-        title="Bulk Assign Agents"
+        title={bulkMode === 'assign' ? 'Bulk Assign Agents' : 'Bulk Unassign Agents'}
       >
         <div className="space-y-4">
-          {unassignedAgents.length === 0 ? (
+          <div className="flex rounded-lg bg-gray-100 p-1">
+            <button
+              onClick={() => setBulkMode('assign')}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                bulkMode === 'assign' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              Assign
+            </button>
+            <button
+              onClick={() => setBulkMode('unassign')}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                bulkMode === 'unassign' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              Unassign
+            </button>
+          </div>
+
+          {bulkMode === 'assign' && unassignedAgents.length === 0 ? (
             <div className="text-center py-6">
               <UserGroupIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
               <p className="text-gray-500 text-sm">All agents are already assigned to stations.</p>
             </div>
+          ) : bulkMode === 'unassign' && assignedAgents.length === 0 ? (
+            <div className="text-center py-6">
+              <XCircleIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-500 text-sm">No assigned agents available to unassign.</p>
+            </div>
           ) : (
             <>
-              <p className="text-sm text-gray-500">
-                {unassignedAgents.length} unassigned agent{unassignedAgents.length !== 1 ? 's' : ''} &middot; {unassignedStations.length} available station{unassignedStations.length !== 1 ? 's' : ''}
-              </p>
-              <div className="max-h-80 overflow-y-auto space-y-3">
-                {unassignedAgents.map((agent) => (
-                  <div key={agent.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{agent.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{agent.email}</p>
-                    </div>
-                    <select
-                      value={bulkAssignments[agent.id] || ''}
-                      onChange={(e) =>
-                        setBulkAssignments((prev) => ({ ...prev, [agent.id]: e.target.value }))
-                      }
-                      className="w-52 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
-                    >
-                      <option value="">Select station...</option>
-                      {unassignedStations
-                        .filter(
-                          (s) =>
-                            !Object.values(bulkAssignments).includes(s.id) ||
-                            bulkAssignments[agent.id] === s.id
-                        )
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.psCode} - {s.name}
-                          </option>
-                        ))}
-                    </select>
+              {bulkMode === 'assign' ? (
+                <>
+                  <p className="text-sm text-gray-500">
+                    {unassignedAgents.length} unassigned agent{unassignedAgents.length !== 1 ? 's' : ''} &middot; {unassignedStations.length} available station{unassignedStations.length !== 1 ? 's' : ''}
+                  </p>
+                  <div className="max-h-80 overflow-y-auto space-y-3">
+                    {unassignedAgents.map((agent) => (
+                      <div key={agent.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{agent.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{agent.email}</p>
+                        </div>
+                        <select
+                          value={bulkAssignments[agent.id] || ''}
+                          onChange={(e) =>
+                            setBulkAssignments((prev) => ({ ...prev, [agent.id]: e.target.value }))
+                          }
+                          className="w-52 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                        >
+                          <option value="">Select station...</option>
+                          {unassignedStations
+                            .filter(
+                              (s) =>
+                                !Object.values(bulkAssignments).includes(s.id) ||
+                                bulkAssignments[agent.id] === s.id
+                            )
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.psCode} - {s.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500">
+                    Select the assigned agents you want to unassign from their polling stations.
+                  </p>
+                  <div className="max-h-80 overflow-y-auto space-y-3">
+                    {assignedAgents.map((agent) => (
+                      <label key={agent.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedBulkUnassignIds.includes(agent.id)}
+                          onChange={(e) =>
+                            setSelectedBulkUnassignIds((current) =>
+                              e.target.checked
+                                ? [...current, agent.id]
+                                : current.filter((id) => id !== agent.id)
+                            )
+                          }
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{agent.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{agent.email}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-medium text-gray-800">
+                            {agent.assignedStations[0]?.psCode}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate max-w-36">
+                            {agent.assignedStations[0]?.name}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
               <div className="flex gap-3 justify-end pt-2">
                 <Button variant="secondary" onClick={() => setShowBulkAssign(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleBulkAssign}
-                  loading={bulkAssigning}
-                  disabled={Object.values(bulkAssignments).filter(Boolean).length === 0}
-                >
-                  Assign {Object.values(bulkAssignments).filter(Boolean).length} Agent{Object.values(bulkAssignments).filter(Boolean).length !== 1 ? 's' : ''}
-                </Button>
+                {bulkMode === 'assign' ? (
+                  <Button
+                    onClick={handleBulkAssign}
+                    loading={bulkAssigning}
+                    disabled={Object.values(bulkAssignments).filter(Boolean).length === 0}
+                  >
+                    Assign {Object.values(bulkAssignments).filter(Boolean).length} Agent{Object.values(bulkAssignments).filter(Boolean).length !== 1 ? 's' : ''}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleBulkUnassign}
+                    loading={bulkAssigning}
+                    disabled={selectedBulkUnassignIds.length === 0}
+                  >
+                    Unassign {selectedBulkUnassignIds.length} Agent{selectedBulkUnassignIds.length !== 1 ? 's' : ''}
+                  </Button>
+                )}
               </div>
             </>
           )}
@@ -1013,6 +1160,16 @@ export default function AgentManagement() {
         message="Are you sure you want to delete this agent?"
         confirmLabel="Delete"
         variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={!!unassignTarget}
+        onClose={() => setUnassignTarget(null)}
+        onConfirm={() => unassignTarget && handleUnassign(unassignTarget)}
+        title="Unassign Agent"
+        message={unassignTarget ? `Unassign ${unassignTarget.name} from ${unassignTarget.assignedStations[0]?.psCode} — ${unassignTarget.assignedStations[0]?.name}?` : ''}
+        confirmLabel="Unassign"
+        variant="warning"
       />
     </div>
   );

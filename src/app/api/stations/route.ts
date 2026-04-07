@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, stationCreateSchema, stationUpdateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 
@@ -135,6 +136,7 @@ export const POST = apiHandler(async (request: Request) => {
     metadata: { psCode: data.psCode, name: data.name, electoralArea: data.electoralArea || null },
   });
 
+  await invalidateLiveSummary();
   broadcastEvent('station:updated', { stationId: station.id, action: 'created' });
 
   return NextResponse.json(station, { status: 201 });
@@ -180,6 +182,7 @@ export async function DELETE(request: NextRequest) {
       metadata: { psCode: station.psCode, name: station.name },
     });
 
+    await invalidateLiveSummary();
     broadcastEvent('station:updated', { stationId: id, action: 'deleted' });
 
     return NextResponse.json({ success: true });
@@ -231,6 +234,7 @@ export async function PUT(request: NextRequest) {
       metadata: { stationId: data.id, updatedFields: Object.keys(updateData) },
     });
 
+    await invalidateLiveSummary();
     broadcastEvent('station:updated', { stationId: data.id, action: 'updated' });
 
     return NextResponse.json(station);

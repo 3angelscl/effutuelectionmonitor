@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import bcrypt from 'bcryptjs';
 import * as XLSX from 'xlsx';
 
@@ -178,6 +179,10 @@ export async function POST(request: NextRequest) {
       detail: `Bulk imported ${successCount} agents from "${file.name}" (${errorCount} errors)`,
       metadata: { successCount, errorCount, totalProcessed: rows.length, fileName: file.name },
     });
+
+    if (successCount > 0) {
+      await invalidateLiveSummary();
+    }
 
     return NextResponse.json({
       successCount,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +41,8 @@ export async function POST(request: NextRequest) {
       detail: `Assigned agent ${agentId} to station ${stationId}`,
       metadata: { agentId, stationId },
     });
+
+    await invalidateLiveSummary();
 
     return NextResponse.json({ success: true });
   } catch (error) {

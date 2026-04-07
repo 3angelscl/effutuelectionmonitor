@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { requireAuth, requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, voterCreateSchema, voterUpdateSchema } from '@/lib/validations';
 
 export async function GET(request: NextRequest) {
@@ -128,6 +130,8 @@ export async function POST(request: NextRequest) {
       metadata: { stationId: station.id, voterId },
     });
 
+    await invalidateLiveSummary();
+
     return NextResponse.json(voter, { status: 201 });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
@@ -157,6 +161,8 @@ export async function PUT(request: NextRequest) {
       metadata: { updateData },
     });
 
+    await invalidateLiveSummary();
+
     return NextResponse.json(voter);
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
@@ -176,6 +182,33 @@ export async function DELETE(request: NextRequest) {
 
     // Delete all voters (optionally filtered by station)
     if (deleteAll === 'true') {
+      // Require password confirmation for bulk delete
+      let body: { password?: string } = {};
+      try {
+        body = await request.json();
+      } catch {
+        // no body
+      }
+
+      if (!body.password) {
+        return NextResponse.json({ error: 'Password confirmation required' }, { status: 400 });
+      }
+
+      // Verify the admin's password
+      const adminUser = await prisma.user.findUnique({
+        where: { id: admin.id },
+        select: { password: true },
+      });
+
+      if (!adminUser) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      const isValidPassword = await bcrypt.compare(body.password, adminUser.password);
+      if (!isValidPassword) {
+        return NextResponse.json({ error: 'Invalid password' }, { status: 403 });
+      }
+
       const where: Record<string, unknown> = {};
       if (stationId) where.stationId = stationId;
 
@@ -205,6 +238,8 @@ export async function DELETE(request: NextRequest) {
         metadata: { deletedCount: ids.length, stationId: stationId || null },
       });
 
+      await invalidateLiveSummary();
+
       return NextResponse.json({ success: true, deletedCount: ids.length });
     }
 
@@ -217,6 +252,8 @@ export async function DELETE(request: NextRequest) {
       where: { id },
       data: { deletedAt: new Date() },
     });
+
+    await invalidateLiveSummary();
 
     return NextResponse.json({ success: true });
   } catch (error) {

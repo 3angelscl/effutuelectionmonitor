@@ -26,6 +26,17 @@ const bottomNav = [
   { name: 'Settings', href: '/admin/settings', icon: Cog6ToothIcon },
 ];
 
+const ADMIN_LAYOUT_EVENT_MAP = {
+  'stats:updated': { keys: ['/api/stats/live-summary', '/api/stats'], debounceMs: 2000 },
+  'station:updated': { keys: ['/api/stations', '/api/stats/live-summary', '/api/stats'], debounceMs: 500 },
+  'notification:new': { keys: ['/api/notifications'], debounceMs: 0 },
+  'chat:message': { keys: ['/api/chat'], debounceMs: 0 },
+  'incident:created': { keys: ['/api/incidents'], debounceMs: 0 },
+  'incident:updated': { keys: ['/api/incidents'], debounceMs: 0 },
+  'election:changed': { keys: ['/api/elections', '/api/elections/active', '/api/stats/live-summary', '/api/stats'], debounceMs: 0 },
+  'agent:checkin': { keys: ['/api/agents/performance', '/api/agent/checkin'], debounceMs: 0 },
+} as const;
+
 export default function AdminLayout({
   children,
 }: {
@@ -35,7 +46,7 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Connect to SSE event stream — auto-revalidates SWR keys on server events
-  useEventStream();
+  useEventStream({ eventMap: ADMIN_LAYOUT_EVENT_MAP });
 
   const closeSidebar = () => setSidebarOpen(false);
   const openSidebar = () => setSidebarOpen(true);

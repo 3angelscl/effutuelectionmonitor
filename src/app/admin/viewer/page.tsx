@@ -1,6 +1,6 @@
 'use client';
 
-import { lazy, Suspense, useState, useCallback } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
@@ -10,43 +10,23 @@ import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import TurnoutChart from '@/components/ui/TurnoutChart';
 import CandidateComparisonStack from '@/components/ui/CandidateComparisonStack';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   ArrowPathIcon,
   SignalIcon,
   MagnifyingGlassIcon,
   ExclamationTriangleIcon,
-  MapIcon,
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import { DashboardStats } from '@/types';
 
 const TurnoutHeatmap = lazy(() => import('@/components/ui/TurnoutHeatmap'));
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 interface TrendPoint {
   timestamp: string;
   totalVoted: number;
   totalRegistered: number;
   turnoutPercentage: number;
-}
-
-interface RegionalData {
-  ward: string;
-  totalRegistered: number;
-  totalVoted: number;
-  turnoutPercentage: number;
-  stationCount: number;
-  stationsReporting: number;
-  candidates: {
-    candidateId: string;
-    candidateName: string;
-    party: string;
-    color: string;
-    votes: number;
-    percentage: number;
-  }[];
 }
 
 interface ElectionComparison {
@@ -62,22 +42,39 @@ interface ElectionComparison {
   candidateCount: number;
 }
 
+interface LiveDashboardStats {
+  totalRegisteredVoters: number;
+  totalVoted: number;
+  totalValidVotes: number;
+  turnoutPercentage: number;
+  totalStations: number;
+  stationsReporting: number;
+  stationsCompleted: number;
+  stations: DashboardStats['stations'];
+  election: DashboardStats['election'];
+}
+
 export default function AdminViewerPage() {
   const { data: session } = useSession();
   const userRole = (session?.user as { role?: string })?.role;
   const canSeeDiscrepancies = userRole && userRole !== 'VIEWER';
 
-  const { data: stats, isLoading, mutate } = useSWR<DashboardStats>('/api/stats', fetcher, {
-    refreshInterval: 30000, // 30-second fallback if SSE is unavailable
+  const { data: liveStats, isLoading, mutate: mutateLiveStats } = useSWR<LiveDashboardStats>(
+    '/api/stats/live-summary',
+    fetcher,
+    {
+      refreshInterval: 30000,
+      revalidateOnFocus: false,
+    }
+  );
+
+  const { data: stats, mutate: mutateDetailedStats } = useSWR<DashboardStats>('/api/stats', fetcher, {
     revalidateOnFocus: true,
   });
 
-  const { data: trendData } = useSWR<TrendPoint[]>('/api/snapshots?hours=24', fetcher, {
-    refreshInterval: 60000, // 1-minute fallback
-  });
-
-  const { data: regionalData } = useSWR<RegionalData[]>('/api/stats/regional', fetcher, {
-    refreshInterval: 60000, // 1-minute fallback
+  const { data: trendData, mutate: mutateTrendData } = useSWR<TrendPoint[]>('/api/snapshots?hours=24', fetcher, {
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
   });
 
   const { data: compareData } = useSWR<{ elections: ElectionComparison[] }>('/api/elections/compare', fetcher);
@@ -85,22 +82,22 @@ export default function AdminViewerPage() {
   const [stationSearch, setStationSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [activeTab, setActiveTab] = useState<'overview' | 'regional' | 'trends' | 'compare'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'trends' | 'compare'>('overview');
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await mutate();
+    await Promise.all([mutateLiveStats(), mutateDetailedStats(), mutateTrendData()]);
     setLastRefreshed(new Date());
     setTimeout(() => setRefreshing(false), 500);
-  }, [mutate]);
+  }, [mutateDetailedStats, mutateLiveStats, mutateTrendData]);
 
-  const filteredStations = (stats?.stations || []).filter(
-    (s) =>
-      s.psCode.toLowerCase().includes(stationSearch.toLowerCase()) ||
-      s.name.toLowerCase().includes(stationSearch.toLowerCase())
+  const filteredStations = (liveStats?.stations || []).filter(
+    (station) =>
+      station.psCode.toLowerCase().includes(stationSearch.toLowerCase()) ||
+      station.name.toLowerCase().includes(stationSearch.toLowerCase())
   );
 
-  if (isLoading || !stats) {
+  if (isLoading || !liveStats) {
     return (
       <div className="flex-1">
         <AdminHeader title="Live Viewer" />
@@ -116,25 +113,23 @@ export default function AdminViewerPage() {
     );
   }
 
-  const discrepancies = stats.discrepancies || [];
+  const discrepancies = stats?.discrepancies || [];
   const highDiscrepancies = discrepancies.filter((d) => d.severity === 'HIGH');
   const mediumDiscrepancies = discrepancies.filter((d) => d.severity === 'MEDIUM');
+  const electionName = (liveStats.election || stats?.election)?.name || 'Election';
 
   return (
     <div className="flex-1">
       <AdminHeader title="Live Viewer" />
 
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
               <SignalIcon className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h2 className="text-lg md:text-xl font-bold text-gray-900">
-                {stats.election ? stats.election.name : 'Election'} — Live Feed
-              </h2>
+              <h2 className="text-lg md:text-xl font-bold text-gray-900">{electionName} - Live Feed</h2>
               <p className="text-sm text-gray-500 hidden sm:block">
                 Real-time voter turnout and results aggregation dashboard
               </p>
@@ -156,7 +151,6 @@ export default function AdminViewerPage() {
           </div>
         </div>
 
-        {/* Discrepancy Alerts Banner — hidden from VIEWER role */}
         {canSeeDiscrepancies && discrepancies.length > 0 && (
           <div className={`rounded-xl border p-4 ${highDiscrepancies.length > 0 ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
             <div className="flex items-start gap-3">
@@ -171,16 +165,16 @@ export default function AdminViewerPage() {
                   {mediumDiscrepancies.length > 0 && `${mediumDiscrepancies.length} MEDIUM severity`}
                 </p>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {discrepancies.map((d, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
+                  {discrepancies.map((discrepancy, index) => (
+                    <div key={index} className="flex items-center gap-2 text-xs">
                       <Badge
-                        variant={d.severity === 'HIGH' ? 'danger' : 'warning'}
+                        variant={discrepancy.severity === 'HIGH' ? 'danger' : 'warning'}
                         size="sm"
                       >
-                        {d.severity}
+                        {discrepancy.severity}
                       </Badge>
-                      <span className="font-mono text-gray-600">{d.psCode}</span>
-                      <span className="text-gray-700">{d.message}</span>
+                      <span className="font-mono text-gray-600">{discrepancy.psCode}</span>
+                      <span className="text-gray-700">{discrepancy.message}</span>
                     </div>
                   ))}
                 </div>
@@ -189,95 +183,89 @@ export default function AdminViewerPage() {
           </div>
         )}
 
-        {/* Tab Navigation */}
         <div className="overflow-x-auto -mx-1">
-        <div className="flex bg-gray-100 rounded-lg p-1 w-fit min-w-full sm:min-w-0">
-          {[
-            { key: 'overview' as const, label: 'Overview' },
-            { key: 'regional' as const, label: 'Regional Breakdown' },
-            { key: 'trends' as const, label: 'Turnout Trends' },
-            { key: 'compare' as const, label: 'Compare Elections' },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab.key
-                  ? 'bg-white text-primary-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          <div className="flex bg-gray-100 rounded-lg p-1 w-fit min-w-full sm:min-w-0">
+            {[
+              { key: 'overview' as const, label: 'Overview' },
+              { key: 'trends' as const, label: 'Turnout Trends' },
+              { key: 'compare' as const, label: 'Compare Elections' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  activeTab === tab.key
+                    ? 'bg-white text-primary-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Stat Cards — always visible */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Total Turnout</p>
             <div className="flex items-baseline gap-2">
-              <p className="text-3xl font-bold text-gray-900">{stats.turnoutPercentage}%</p>
+              <p className="text-3xl font-bold text-gray-900">{liveStats.turnoutPercentage}%</p>
             </div>
             <p className="text-sm text-gray-500 mt-1">
-              {formatNumber(stats.totalVoted)} / {formatNumber(stats.totalRegisteredVoters)} voters
+              {formatNumber(liveStats.totalVoted)} / {formatNumber(liveStats.totalRegisteredVoters)} voters
             </p>
             <div className="mt-3">
-              <ProgressBar value={stats.turnoutPercentage} />
+              <ProgressBar value={liveStats.turnoutPercentage} />
             </div>
           </Card>
           <Card>
             <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Stations Reported</p>
             <p className="text-3xl font-bold text-gray-900">
-              {stats.stationsReporting} / {stats.totalStations}
+              {liveStats.stationsReporting} / {liveStats.totalStations}
             </p>
             <p className="text-sm text-gray-500 mt-1">
-              {stats.totalStations > 0
-                ? ((stats.stationsReporting / stats.totalStations) * 100).toFixed(1)
+              {liveStats.totalStations > 0
+                ? ((liveStats.stationsReporting / liveStats.totalStations) * 100).toFixed(1)
                 : 0}% data completeness
             </p>
           </Card>
           <Card>
             <p className="text-xs font-bold text-primary-600 uppercase tracking-wider mb-2">Valid Votes Cast</p>
-            <p className="text-3xl font-bold text-gray-900">{formatNumber(stats.totalValidVotes)}</p>
+            <p className="text-3xl font-bold text-gray-900">{formatNumber(liveStats.totalValidVotes)}</p>
             <p className="text-sm text-gray-500 mt-1">
-              Across {stats.stationsCompleted} reporting station{stats.stationsCompleted !== 1 ? 's' : ''}
+              Across {liveStats.stationsCompleted} reporting station{liveStats.stationsCompleted !== 1 ? 's' : ''}
             </p>
           </Card>
         </div>
 
-        {/* ─── OVERVIEW TAB ─── */}
         {activeTab === 'overview' && (
           <>
-            {/* Candidate Comparison Stack Chart */}
             <Card>
               <CandidateComparisonStack
-                candidate1={stats.favCandidate1}
-                candidate2={stats.favCandidate2}
-                totalVotes={stats.totalValidVotes}
+                candidate1={stats?.favCandidate1 || null}
+                candidate2={stats?.favCandidate2 || null}
+                totalVotes={stats?.totalValidVotes || liveStats.totalValidVotes}
               />
             </Card>
 
             <Card>
               <ErrorBoundary fallback={<div className="h-80 flex items-center justify-center text-sm text-gray-400">Failed to load heatmap</div>}>
-              <Suspense fallback={<div className="h-80 bg-gray-100 rounded-lg animate-pulse" />}>
-                <TurnoutHeatmap stations={stats.stations} />
-              </Suspense>
+                <Suspense fallback={<div className="h-80 bg-gray-100 rounded-lg animate-pulse" />}>
+                  <TurnoutHeatmap stations={liveStats.stations} />
+                </Suspense>
               </ErrorBoundary>
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Candidate Results */}
               <Card>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-semibold text-gray-900">Candidate Results</h3>
-                  <Badge variant={stats.overallResultType === 'FINAL' ? 'success' : 'warning'}>
-                    {stats.overallResultType === 'FINAL' ? 'FINAL RESULTS' : 'PROVISIONAL'}
+                  <Badge variant={stats?.overallResultType === 'FINAL' ? 'success' : 'warning'}>
+                    {stats?.overallResultType === 'FINAL' ? 'FINAL RESULTS' : 'PROVISIONAL'}
                   </Badge>
                 </div>
                 <div className="space-y-6">
-                  {stats.candidateResults.map((candidate) => (
+                  {stats?.candidateResults.map((candidate) => (
                     <div key={candidate.candidateId}>
                       <div className="flex items-baseline justify-between mb-1">
                         <div>
@@ -302,13 +290,22 @@ export default function AdminViewerPage() {
                       </div>
                     </div>
                   ))}
-                  {stats.candidateResults.length === 0 && (
+                  {!stats && (
+                    <div className="space-y-4">
+                      {[...Array(3)].map((_, index) => (
+                        <div key={index} className="animate-pulse space-y-2">
+                          <div className="h-4 w-32 bg-gray-200 rounded" />
+                          <div className="h-2.5 w-full bg-gray-200 rounded-full" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {stats && stats.candidateResults.length === 0 && (
                     <p className="text-gray-500 text-center py-8">No results submitted yet.</p>
                   )}
                 </div>
               </Card>
 
-              {/* Polling Station Explorer */}
               <Card padding={false}>
                 <div className="p-6 pb-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Polling Station Explorer</h3>
@@ -369,66 +366,6 @@ export default function AdminViewerPage() {
           </>
         )}
 
-        {/* ─── REGIONAL BREAKDOWN TAB ─── */}
-        {activeTab === 'regional' && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <MapIcon className="h-5 w-5 text-primary-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Regional / Ward Breakdown</h3>
-            </div>
-
-            {!regionalData || regionalData.length === 0 ? (
-              <Card>
-                <p className="text-gray-500 text-center py-8">No ward data available. Ensure stations have ward assignments.</p>
-              </Card>
-            ) : (
-              <div className="space-y-4">
-                {regionalData.map((ward) => (
-                  <Card key={ward.ward}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h4 className="font-bold text-gray-900 text-lg">{ward.ward}</h4>
-                        <p className="text-xs text-gray-500">
-                          {ward.stationCount} station{ward.stationCount !== 1 ? 's' : ''} · {ward.stationsReporting} reporting
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-primary-600">{ward.turnoutPercentage}%</p>
-                        <p className="text-xs text-gray-500">
-                          {formatNumber(ward.totalVoted)} / {formatNumber(ward.totalRegistered)}
-                        </p>
-                      </div>
-                    </div>
-                    <ProgressBar value={ward.turnoutPercentage} />
-
-                    {ward.candidates.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Candidate Results</p>
-                        <div className="space-y-2">
-                          {ward.candidates.map((c) => (
-                            <div key={c.candidateId} className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
-                                <span className="text-sm font-medium text-gray-900">{c.candidateName}</span>
-                                <span className="text-xs text-gray-400">({c.party})</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-bold text-gray-900">{formatNumber(c.votes)}</span>
-                                <span className="text-xs text-gray-500 w-12 text-right">{c.percentage}%</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ─── TURNOUT TRENDS TAB ─── */}
         {activeTab === 'trends' && (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
@@ -449,7 +386,6 @@ export default function AdminViewerPage() {
               )}
             </Card>
 
-            {/* Snapshot trigger */}
             <Card>
               <div className="flex items-center justify-between">
                 <div>
@@ -461,8 +397,7 @@ export default function AdminViewerPage() {
                 <button
                   onClick={async () => {
                     await fetch('/api/snapshots', { method: 'POST' });
-                    // Refresh trend data after snapshot
-                    window.location.reload();
+                    await mutateTrendData();
                   }}
                   className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
                 >
@@ -473,7 +408,6 @@ export default function AdminViewerPage() {
           </div>
         )}
 
-        {/* ─── COMPARATIVE ANALYTICS TAB ─── */}
         {activeTab === 'compare' && (
           <div className="space-y-6">
             <div className="flex items-center gap-3">
@@ -489,7 +423,6 @@ export default function AdminViewerPage() {
               </Card>
             ) : (
               <>
-                {/* Comparison Table */}
                 <Card padding={false}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -505,40 +438,40 @@ export default function AdminViewerPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {compareData.elections.map((el) => (
-                          <tr key={el.id} className={`border-b border-gray-50 hover:bg-gray-50 ${el.isActive ? 'bg-primary-50/30' : ''}`}>
+                        {compareData.elections.map((election) => (
+                          <tr key={election.id} className={`border-b border-gray-50 hover:bg-gray-50 ${election.isActive ? 'bg-primary-50/30' : ''}`}>
                             <td className="py-3 px-6">
                               <div>
-                                <p className="font-semibold text-gray-900">{el.name}</p>
-                                {el.date && (
+                                <p className="font-semibold text-gray-900">{election.name}</p>
+                                {election.date && (
                                   <p className="text-xs text-gray-400">
-                                    {new Date(el.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    {new Date(election.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                                   </p>
                                 )}
                               </div>
                             </td>
                             <td className="py-3 px-4">
                               <Badge variant={
-                                el.isActive ? 'success' :
-                                el.status === 'COMPLETED' ? 'info' : 'neutral'
+                                election.isActive ? 'success' :
+                                election.status === 'COMPLETED' ? 'info' : 'neutral'
                               }>
-                                {el.isActive ? 'ACTIVE' : el.status}
+                                {election.isActive ? 'ACTIVE' : election.status}
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-right font-mono text-gray-700">
-                              {formatNumber(el.totalRegistered)}
+                              {formatNumber(election.totalRegistered)}
                             </td>
                             <td className="py-3 px-4 text-right font-mono text-gray-700">
-                              {formatNumber(el.totalVoted)}
+                              {formatNumber(election.totalVoted)}
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <span className="font-bold text-primary-600">{el.turnoutPercentage}%</span>
+                              <span className="font-bold text-primary-600">{election.turnoutPercentage}%</span>
                             </td>
                             <td className="py-3 px-4 text-right font-mono text-gray-700">
-                              {el.stationsReporting}
+                              {election.stationsReporting}
                             </td>
                             <td className="py-3 px-6 text-right font-mono text-gray-700">
-                              {el.candidateCount}
+                              {election.candidateCount}
                             </td>
                           </tr>
                         ))}
@@ -547,23 +480,22 @@ export default function AdminViewerPage() {
                   </div>
                 </Card>
 
-                {/* Visual Comparison Bar Chart */}
                 <Card>
                   <h4 className="font-semibold text-gray-900 mb-4">Turnout Comparison</h4>
                   <div className="space-y-3">
-                    {compareData.elections.map((el) => (
-                      <div key={el.id} className="flex items-center gap-4">
-                        <div className="w-40 text-sm text-gray-700 font-medium truncate">{el.name}</div>
+                    {compareData.elections.map((election) => (
+                      <div key={election.id} className="flex items-center gap-4">
+                        <div className="w-40 text-sm text-gray-700 font-medium truncate">{election.name}</div>
                         <div className="flex-1">
                           <div className="w-full bg-gray-200 rounded-full h-6 relative">
                             <div
                               className={`h-6 rounded-full transition-all duration-500 flex items-center justify-end pr-2 ${
-                                el.isActive ? 'bg-primary-600' : 'bg-gray-400'
+                                election.isActive ? 'bg-primary-600' : 'bg-gray-400'
                               }`}
-                              style={{ width: `${Math.min(100, el.turnoutPercentage)}%` }}
+                              style={{ width: `${Math.min(100, election.turnoutPercentage)}%` }}
                             >
                               <span className="text-xs font-bold text-white">
-                                {el.turnoutPercentage}%
+                                {election.turnoutPercentage}%
                               </span>
                             </div>
                           </div>

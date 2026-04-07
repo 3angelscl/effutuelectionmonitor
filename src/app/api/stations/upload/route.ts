@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
@@ -151,6 +152,10 @@ export async function POST(request: NextRequest) {
       detail: `BULK_IMPORT PollingStation - ${created} created, ${skipped} skipped`,
       metadata: { created, skipped, errors: errors.slice(0, 10) },
     });
+
+    if (created > 0) {
+      await invalidateLiveSummary();
+    }
 
     return NextResponse.json({
       created,

@@ -14,6 +14,7 @@
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { broadcastEvent } from '@/lib/events';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import { ApiError } from '@/lib/api-auth';
 import type { AuthUser } from '@/lib/api-auth';
 
@@ -181,6 +182,8 @@ export async function submitResults(input: SubmitResultsInput): Promise<SubmitRe
     },
   });
 
+  await invalidateLiveSummary(activeElection.id);
+
   broadcastEvent('results:submitted', {
     stationId,
     stationCode: station.psCode,
@@ -220,7 +223,8 @@ export interface ExportResult {
 
 /** Fetch results for export, capped at MAX_EXPORT_ROWS with truncation detection. */
 export async function getResultsForExport(filter: ExportFilter): Promise<ExportResult> {
-  let { electionId, candidateId } = filter;
+  let { electionId } = filter;
+  const { candidateId } = filter;
 
   if (!electionId) {
     const active = await prisma.election.findFirst({ where: { isActive: true } });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
+import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, electionCreateSchema, electionUpdateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 
@@ -47,6 +48,7 @@ export const POST = apiHandler(async (request: Request) => {
     detail: `Created election "${data.name}"`,
   });
 
+  await invalidateLiveSummary();
   broadcastEvent('election:changed', { electionId: election.id, action: 'created' });
 
   return NextResponse.json(election, { status: 201 });
@@ -92,6 +94,7 @@ export async function PUT(request: NextRequest) {
       metadata: { name: data.name, status: data.status },
     });
 
+    await invalidateLiveSummary();
     broadcastEvent('election:changed', { electionId: data.id, action: 'updated' });
 
     return NextResponse.json(election);
@@ -134,6 +137,7 @@ export async function DELETE(request: NextRequest) {
       detail: `Deleted election "${targetElection?.name}"`,
     });
 
+    await invalidateLiveSummary();
     broadcastEvent('election:changed', { electionId: id, action: 'deleted' });
 
     return NextResponse.json({ success: true });

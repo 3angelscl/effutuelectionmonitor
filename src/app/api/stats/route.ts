@@ -3,6 +3,7 @@ import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     await requireAuth();
 
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
     // We need voter->station mapping for turnout counts
     // Get unique voterIds that voted, then group by station
     const votedVoterIds = votedCounts.map((v) => v.voterId);
-    let votedByStation = new Map<string, number>();
+    const votedByStation = new Map<string, number>();
 
     if (votedVoterIds.length > 0) {
       // Process in batches to avoid oversized IN clauses
@@ -228,7 +229,7 @@ export async function GET(request: NextRequest) {
         ? 'FINAL'
         : 'PROVISIONAL';
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       totalRegisteredVoters: totalRegistered,
       totalVoted,
       totalValidVotes,
@@ -244,6 +245,14 @@ export async function GET(request: NextRequest) {
       favCandidate1: candidateResults.find(c => c.candidateId === election?.favCandidate1Id) || null,
       favCandidate2: candidateResults.find(c => c.candidateId === election?.favCandidate2Id) || null,
     });
+    console.info('[api/stats] completed', {
+      electionId: activeElectionId,
+      durationMs: Date.now() - startedAt,
+      totalStations: stations.length,
+      totalVoted,
+      totalValidVotes,
+    });
+    return response;
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
     console.error('Stats error:', error);
