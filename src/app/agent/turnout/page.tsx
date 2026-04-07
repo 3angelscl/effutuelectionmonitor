@@ -6,12 +6,12 @@ import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 const PAGE_SIZE = 25;
 
 interface StationData {
@@ -55,8 +55,12 @@ export default function TurnoutPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const userId = (session?.user as { id?: string })?.id;
-  const { data: stations, mutate: mutateStations } = useSWR<StationData[]>('/api/stations', fetcher, { refreshInterval: 30000 });
-  const station = (stations || []).find((s) => s.agentId === userId);
+  const { data: stations, isLoading: stationsLoading, mutate: mutateStations } = useSWR<StationData[]>('/api/stations', fetcher, { refreshInterval: 30000 });
+  const station = (Array.isArray(stations) ? stations : []).find((s) => s.agentId === userId);
+
+  // Check-in status
+  const { data: checkinData, isLoading: checkinLoading } = useSWR(userId ? '/api/agent/checkin' : null, fetcher, { refreshInterval: 30000 });
+  const isCheckedIn = checkinData?.checkInStatus?.type === 'CHECK_IN';
 
   // Infinite loading
   const getKey = (pageIndex: number, prevData: VoterPage | null) => {
@@ -82,7 +86,13 @@ export default function TurnoutPage() {
     revalidateOnFocus: false,
   });
 
-  const rawVoters = pages ? pages.flatMap((p) => p.voters) : [];
+  const rawVoters = pages
+    ? Array.from(
+        new Map(
+          pages.flatMap((page) => page.voters).map((voter) => [voter.id, voter])
+        ).values()
+      )
+    : [];
   const total = pages?.[0]?.total || 0;
   const totalPages = pages?.[0]?.totalPages || 1;
   const isLoadingMore = size > 0 && pages && typeof pages[size - 1] === 'undefined';
@@ -159,11 +169,65 @@ export default function TurnoutPage() {
     }
   };
 
+  if (stationsLoading || !stations) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   if (!station) {
     return (
       <div className="p-6">
         <Card className="text-center py-12">
           <p className="text-gray-500">No polling station assigned.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  if (checkinLoading || !checkinData) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isCheckedIn) {
+    return (
+      <div className="p-4 md:p-6 space-y-4">
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Record Voter Turnout</h2>
+          <p className="text-gray-500 text-sm mt-0.5">{station.name} · <span className="font-mono">{station.psCode}</span></p>
+        </div>
+        <Card className="text-center py-12">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-3 rounded-full bg-amber-50">
+              <ExclamationTriangleIcon className="h-8 w-8 text-amber-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Check-in Required</p>
+              <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+                You must check in at your polling station before you can record voter turnout. Go to your dashboard and tap the <strong>Check In</strong> button.
+              </p>
+            </div>
+            <a
+              href="/agent"
+              className="mt-2 inline-flex items-center px-4 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Go to Dashboard
+            </a>
+          </div>
         </Card>
       </div>
     );
@@ -241,9 +305,9 @@ export default function TurnoutPage() {
           <div key={voter.id} className="bg-white rounded-xl border border-gray-200 p-3 flex items-center gap-3">
             {/* Photo / initials */}
             {voter.photo ? (
-              <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-11 h-11 rounded-full object-cover border border-gray-200 shrink-0" />
+              <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-14 h-14 rounded-xl object-cover border border-gray-200 shrink-0" />
             ) : (
-              <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${voter.hasVoted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${voter.hasVoted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                 {voter.firstName[0]}{voter.lastName[0]}
               </div>
             )}
@@ -251,6 +315,9 @@ export default function TurnoutPage() {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-gray-900 text-sm leading-tight">{voter.firstName} {voter.lastName}</p>
               <p className="text-xs text-gray-400 mt-0.5 font-mono">{voter.voterId}</p>
+              <p className={`text-[11px] mt-1 font-medium ${voter.photo ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {voter.photo ? 'Photo available for verification' : 'No voter photo'}
+              </p>
             </div>
             {/* Action button — large touch target */}
             <button
@@ -274,6 +341,7 @@ export default function TurnoutPage() {
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Voter ID</th>
+              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Photo</th>
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
               <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
               <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
@@ -285,15 +353,20 @@ export default function TurnoutPage() {
               <tr key={voter.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="py-3 px-6 font-mono text-xs text-gray-700">{voter.voterId}</td>
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-3">
-                    {voter.photo ? (
-                      <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">
-                        {voter.firstName[0]}{voter.lastName[0]}
-                      </div>
-                    )}
-                    <span className="font-medium text-gray-900">{voter.firstName} {voter.lastName}</span>
+                  {voter.photo ? (
+                    <img src={voter.photo} alt={`${voter.firstName} ${voter.lastName}`} className="w-12 h-12 rounded-xl object-cover border border-gray-200 shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center text-xs font-bold text-gray-600 shrink-0">
+                      {voter.firstName[0]}{voter.lastName[0]}
+                    </div>
+                  )}
+                </td>
+                <td className="py-3 px-4">
+                  <div className="space-y-0.5">
+                    <span className="font-medium text-gray-900 block">{voter.firstName} {voter.lastName}</span>
+                    <span className={`text-xs font-medium ${voter.photo ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {voter.photo ? 'Photo available' : 'No photo'}
+                    </span>
                   </div>
                 </td>
                 <td className="py-3 px-4 text-center text-gray-600">{voter.age}</td>
@@ -323,7 +396,7 @@ export default function TurnoutPage() {
             ))}
             {voters.length === 0 && !isValidating && (
               <tr>
-                <td colSpan={5} className="py-12 text-center text-gray-500">
+                <td colSpan={6} className="py-12 text-center text-gray-500">
                   {search ? 'No voters found matching your search' : 'No voters registered at this station'}
                 </td>
               </tr>

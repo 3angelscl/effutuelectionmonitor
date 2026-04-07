@@ -50,7 +50,11 @@ export async function GET(request: NextRequest) {
         where,
         skip: (safePage - 1) * safeLimit,
         take: safeLimit,
-        orderBy: { lastName: 'asc' },
+        orderBy: [
+          { lastName: 'asc' },
+          { firstName: 'asc' },
+          { id: 'asc' },
+        ],
         include: {
           pollingStation: { select: { name: true, psCode: true } },
           turnout: activeElection
