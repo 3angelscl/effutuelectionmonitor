@@ -224,7 +224,7 @@ export const stationCreateSchema = z.object({
   psCode: z.string().min(1, 'PS Code is required').max(50).transform((s) => sanitizeText(s)),
   name: z.string().min(1, 'Station name is required').max(200).transform((s) => sanitizeText(s)),
   location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
-  ward: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  electoralArea: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
 });
@@ -233,9 +233,20 @@ export const stationUpdateSchema = z.object({
   id: z.string().uuid('Valid station ID required'),
   name: z.string().min(1).max(200).transform((s) => sanitizeText(s)).optional(),
   location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
-  ward: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  electoralArea: z.string().max(200).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
+});
+
+export const electoralAreaCreateSchema = z.object({
+  name: z.string().min(1, 'Electoral area name is required').max(200).transform((s) => sanitizeText(s)),
+  location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+});
+
+export const electoralAreaUpdateSchema = z.object({
+  id: z.string().uuid('Valid electoral area ID required'),
+  name: z.string().min(1, 'Electoral area name is required').max(200).transform((s) => sanitizeText(s)),
+  location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
 });
 
 export const stationAssignSchema = z.object({

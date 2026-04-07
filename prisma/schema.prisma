@@ -36,6 +36,7 @@ model User {
   checkIns          AgentCheckIn[]
   incidents         Incident[]
   tallyPhotos       TallyPhoto[]
+  pushSubscriptions PushSubscription[]
 
   @@index([role])
   @@index([deletedAt])
@@ -95,17 +96,27 @@ model Election {
   @@index([status])
 }
 
+model ElectoralArea {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
 model PollingStation {
   id         String   @id @default(uuid())
   psCode     String   @unique
   name       String
   location   String?
-  ward       String?
-  latitude   Float?
-  longitude  Float?
-  agentId    String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  electoralArea String?
+  latitude      Float?
+  longitude     Float?
+  agentId       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   agent    User?          @relation("StationAgent", fields: [agentId], references: [id], onDelete: SetNull)
   voters   Voter[]
@@ -115,7 +126,7 @@ model PollingStation {
   tallyPhotos TallyPhoto[]
   turnoutSnapshots TurnoutSnapshot[]
 
-  @@index([ward])
+  @@index([electoralArea])
 }
 
 model Voter {
@@ -294,6 +305,19 @@ model TallyPhoto {
   @@index([userId])
   @@index([electionId])
   @@index([createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model TurnoutSnapshot {

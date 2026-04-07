@@ -59,7 +59,7 @@ const navigation: NavEntry[] = [
     children: [
       { name: 'Election Setup', href: '/admin/elections/setup', icon: RocketLaunchIcon, roles: ['ADMIN'] },
       { name: 'Election Results', href: '/admin/results', icon: ChartBarIcon, roles: ['ADMIN', 'OFFICER'] },
-      { name: 'Tally Photos', href: '/admin/tally-photos', icon: PhotoIcon, roles: ['ADMIN', 'OFFICER'] },
+      { name: 'Pink Sheets', href: '/admin/tally-photos', icon: PhotoIcon, roles: ['ADMIN', 'OFFICER'] },
       { name: 'Election Archives', href: '/admin/elections/archive', icon: ArchiveBoxIcon, roles: ['ADMIN', 'OFFICER'] },
       { name: 'Trend Analytics', href: '/admin/analytics', icon: ArrowTrendingUpIcon, roles: ['ADMIN', 'OFFICER'] },
     ],
@@ -84,6 +84,7 @@ const navigation: NavEntry[] = [
     roles: ['ADMIN', 'OFFICER'],
     children: [
       { name: 'Polling Stations', href: '/admin/stations', icon: MapPinIcon, roles: ['ADMIN', 'OFFICER'] },
+      { name: 'Electoral Areas', href: '/admin/electoral-areas', icon: MapPinIcon, roles: ['ADMIN', 'OFFICER'] },
       { name: 'Incidents', href: '/admin/incidents', icon: ExclamationTriangleIcon, roles: ['ADMIN', 'OFFICER'] },
     ],
   },

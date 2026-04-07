@@ -1,6 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
+import { fetcher } from '@/lib/utils';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
@@ -10,9 +11,8 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   MinusIcon,
+  MapPinIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface CandidateVote {
   id: string;
@@ -53,15 +53,6 @@ interface TrendsData {
   partyTrends: PartyTrend[];
 }
 
-interface WardStat {
-  ward: string;
-  stationCount: number;
-  registeredVoters: number;
-  votedVoters: number;
-  turnoutPct: number;
-  stationsReported: number;
-}
-
 interface AgeBucket {
   label: string;
   total: number;
@@ -93,6 +84,25 @@ interface CompareData {
   series: SnapshotSeries[];
 }
 
+interface AreaCandidate {
+  candidateId: string;
+  candidateName: string;
+  party: string;
+  color: string;
+  votes: number;
+  percentage: number;
+}
+
+interface ElectoralAreaStat {
+  electoralArea: string;
+  stationCount: number;
+  stationsReporting: number;
+  registeredVoters: number;
+  votedVoters: number;
+  turnoutPct: number;
+  candidates: AreaCandidate[];
+}
+
 // Simple bar chart using inline SVG
 function BarChart({ data, color }: { data: { label: string; value: number }[]; color?: string }) {
   const max = Math.max(...data.map((d) => d.value), 1);
@@ -119,16 +129,10 @@ function Trend({ current, previous }: { current: number; previous: number }) {
     : <span className="flex items-center gap-0.5 text-red-500 text-xs font-semibold"><ArrowTrendingDownIcon className="h-3.5 w-3.5" />{diff.toFixed(1)}%</span>;
 }
 
-function turnoutColor(pct: number): string {
-  if (pct >= 70) return '#16a34a';
-  if (pct >= 40) return '#d97706';
-  return '#dc2626';
-}
-
 export default function AnalyticsPage() {
   const { data, isLoading } = useSWR<TrendsData>('/api/elections/trends', fetcher);
-  const { data: wardData } = useSWR<WardStat[]>('/api/stats/ward', fetcher);
   const { data: demoData } = useSWR<DemographicsData>('/api/stats/demographics', fetcher);
+  const { data: areaData } = useSWR<ElectoralAreaStat[]>('/api/stats/electoral-area', fetcher);
 
   const elections = data?.elections || [];
   const partyTrends = data?.partyTrends || [];
@@ -139,7 +143,6 @@ export default function AnalyticsPage() {
     fetcher
   );
 
-  const wards = Array.isArray(wardData) ? wardData : [];
   const ageBuckets = demoData?.ageBuckets || [];
   const compareElections = compareData?.elections || [];
   const compareSeries = compareData?.series || [];
@@ -345,59 +348,6 @@ export default function AnalyticsPage() {
               </Card>
             )}
 
-            {/* Ward Breakdown */}
-            <Card>
-              <h3 className="text-base font-semibold text-gray-900 mb-1">Ward Breakdown</h3>
-              <p className="text-sm text-gray-500 mb-4">Turnout and station reporting by ward for the active election</p>
-              {wards.length === 0 ? (
-                <p className="text-sm text-gray-400 py-4 text-center">No ward data available.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50">
-                        <th className="text-left py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Ward</th>
-                        <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Stations</th>
-                        <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Registered</th>
-                        <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Voted</th>
-                        <th className="py-2 px-4 text-xs font-semibold text-gray-500 uppercase min-w-[160px]">Turnout %</th>
-                        <th className="text-right py-2 px-4 text-xs font-semibold text-gray-500 uppercase">Reported</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {wards.map((w) => {
-                        const color = turnoutColor(w.turnoutPct);
-                        return (
-                          <tr key={w.ward} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-2 px-4 font-medium text-gray-900">{w.ward}</td>
-                            <td className="py-2 px-4 text-right text-gray-600">{w.stationCount}</td>
-                            <td className="py-2 px-4 text-right text-gray-600">{w.registeredVoters.toLocaleString()}</td>
-                            <td className="py-2 px-4 text-right text-gray-600">{w.votedVoters.toLocaleString()}</td>
-                            <td className="py-2 px-4">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold w-10 text-right shrink-0" style={{ color }}>
-                                  {w.turnoutPct}%
-                                </span>
-                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{ width: `${Math.min(w.turnoutPct, 100)}%`, backgroundColor: color }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-2 px-4 text-right text-gray-600">
-                              {w.stationsReported}/{w.stationCount}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-
             {/* Voter Demographics */}
             <Card>
               <h3 className="text-base font-semibold text-gray-900 mb-1">Voter Demographics</h3>
@@ -463,6 +413,45 @@ export default function AnalyticsPage() {
                 </>
               )}
             </Card>
+
+            {/* Electoral Area Trends */}
+            {areaData && areaData.length > 0 && (
+              <Card>
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPinIcon className="h-5 w-5 text-primary-500" />
+                  <h3 className="text-base font-semibold text-gray-900">Electoral Area Trends</h3>
+                </div>
+                <p className="text-sm text-gray-500 mb-5">Turnout by electoral area for the active election</p>
+
+                {/* Turnout bar chart per area */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Turnout by Electoral Area</p>
+                  <div className="space-y-2">
+                    {[...areaData]
+                      .sort((a, b) => b.turnoutPct - a.turnoutPct)
+                      .map((area) => (
+                        <div key={area.electoralArea} className="flex items-center gap-3">
+                          <span className="text-xs font-medium text-gray-700 w-44 shrink-0 truncate" title={area.electoralArea}>
+                            {area.electoralArea}
+                          </span>
+                          <div className="flex-1 h-4 bg-gray-100 rounded overflow-hidden">
+                            <div
+                              className="h-full rounded bg-primary-500 transition-all"
+                              style={{ width: `${area.turnoutPct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-semibold text-gray-800 w-10 text-right shrink-0">
+                            {area.turnoutPct}%
+                          </span>
+                          <span className="text-[10px] text-gray-400 w-16 shrink-0 text-right">
+                            {area.stationsReporting}/{area.stationCount} stns
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </Card>
+            )}
 
             {/* Turnout Progression Comparison */}
             <Card>

@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
         row['location'] || row['Location'] || row['LOCATION'] || ''
       ).trim() || null;
 
-      const ward = String(
+      const electoralArea = String(
+        row['electoralArea'] || row['electoral_area'] || row['Electoral Area'] || row['ELECTORAL_AREA'] ||
         row['ward'] || row['Ward'] || row['WARD'] || ''
       ).trim() || null;
 
@@ -117,12 +118,20 @@ export async function POST(request: NextRequest) {
       const longitudeVal = longitude !== null && !isNaN(longitude) ? longitude : null;
 
       try {
+        if (electoralArea) {
+          await prisma.electoralArea.upsert({
+            where: { name: electoralArea },
+            create: { name: electoralArea },
+            update: {},
+          });
+        }
+
         await prisma.pollingStation.create({
           data: {
             psCode,
             name,
             location,
-            ward,
+            electoralArea,
             latitude: latitudeVal,
             longitude: longitudeVal,
           },

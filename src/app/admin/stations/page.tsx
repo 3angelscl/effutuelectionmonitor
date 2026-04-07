@@ -15,7 +15,7 @@ import StatCard from '@/components/ui/StatCard';
 import ProgressBar from '@/components/ui/ProgressBar';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from 'sonner';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -32,13 +32,12 @@ import {
 
 const MapPicker = lazy(() => import('@/components/ui/MapPicker'));
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
-
 interface StationData {
   id: string;
   psCode: string;
   name: string;
   location: string | null;
+  electoralArea: string | null;
   latitude: number | null;
   longitude: number | null;
   agentId: string | null;
@@ -47,6 +46,12 @@ interface StationData {
   totalVoted: number;
   turnoutPercentage: number;
   results: { candidateId: string; candidateName: string; party: string; votes: number }[];
+}
+
+interface ElectoralAreaOption {
+  id: string;
+  name: string;
+  location: string | null;
 }
 
 type StatusFilter = 'ALL' | 'REPORTED' | 'ACTIVE' | 'PENDING';
@@ -63,17 +68,31 @@ export default function PollingStationsPage() {
   const userRole = (session?.user as { role?: string })?.role;
   const canModify = userRole === 'ADMIN';
   const { data: stations, mutate } = useSWR<StationData[]>('/api/stations', fetcher);
+  const { data: electoralAreas } = useSWR<ElectoralAreaOption[]>('/api/electoral-areas', fetcher);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [page, setPage] = useState(1);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [newStation, setNewStation] = useState({ psCode: '', name: '', location: '', latitude: null as number | null, longitude: null as number | null });
+  const [newStation, setNewStation] = useState({
+    psCode: '',
+    name: '',
+    location: '',
+    electoralArea: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
+  });
   const [saving, setSaving] = useState(false);
   // selectedStation kept for backwards compat but now we navigate to detail page
   // Edit modal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editStation, setEditStation] = useState<StationData | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', location: '', latitude: null as number | null, longitude: null as number | null });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    location: '',
+    electoralArea: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
+  });
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; psCode: string } | null>(null);
   // Import modal state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -82,7 +101,7 @@ export default function PollingStationsPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const perPage = 20;
 
-  const allStations = stations || [];
+  const allStations = Array.isArray(stations) ? stations : [];
 
   const statusCounts = useMemo(() => {
     const counts = { ALL: allStations.length, REPORTED: 0, ACTIVE: 0, PENDING: 0 };
@@ -101,6 +120,7 @@ export default function PollingStationsPage() {
         (s) =>
           s.psCode.toLowerCase().includes(q) ||
           s.name.toLowerCase().includes(q) ||
+          (s.electoralArea || '').toLowerCase().includes(q) ||
           s.agent?.name.toLowerCase().includes(q)
       );
     }
@@ -130,7 +150,7 @@ export default function PollingStationsPage() {
         mutate();
         toast.success('Station added successfully');
         setAddModalOpen(false);
-        setNewStation({ psCode: '', name: '', location: '', latitude: null, longitude: null });
+        setNewStation({ psCode: '', name: '', location: '', electoralArea: '', latitude: null, longitude: null });
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to add station');
@@ -148,6 +168,7 @@ export default function PollingStationsPage() {
     setEditForm({
       name: station.name,
       location: station.location || '',
+      electoralArea: station.electoralArea || '',
       latitude: station.latitude,
       longitude: station.longitude,
     });
@@ -236,7 +257,7 @@ export default function PollingStationsPage() {
   };
 
   const handleTemplateDownload = () => {
-    const csv = 'psCode,name,location,ward,latitude,longitude\nPS001,Example Station,Location Name,Ward 1,,';
+    const csv = 'psCode,name,location,electoralArea,latitude,longitude\nPS001,Example Station,Location Name,SANKOR-DON BOSCO,,';
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -361,6 +382,7 @@ export default function PollingStationsPage() {
                   <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">PS Code</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Station Name</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Location</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Electoral Area</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Agent</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Registered</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Voted</th>
@@ -393,6 +415,9 @@ export default function PollingStationsPage() {
                         ) : (
                           <span className="text-gray-300">-</span>
                         )}
+                      </td>
+                      <td className="py-3.5 px-4 text-gray-700 text-xs">
+                        {station.electoralArea || <span className="text-gray-300">-</span>}
                       </td>
                       <td className="py-3.5 px-4 text-gray-700 text-xs">
                         {station.agent ? station.agent.name : (
@@ -450,7 +475,7 @@ export default function PollingStationsPage() {
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-gray-500">
+                    <td colSpan={10} className="py-12 text-center text-gray-500">
                       {search || statusFilter !== 'ALL'
                         ? 'No stations found matching your filters'
                         : 'No polling stations added yet'}
@@ -549,6 +574,23 @@ export default function PollingStationsPage() {
           />
           <div>
             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Electoral Area
+            </label>
+            <select
+              value={newStation.electoralArea}
+              onChange={(e) => setNewStation({ ...newStation, electoralArea: e.target.value })}
+              className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+            >
+              <option value="">Unassigned</option>
+              {(Array.isArray(electoralAreas) ? electoralAreas : []).map((area) => (
+                <option key={area.id} value={area.name}>
+                  {area.name}{area.location ? ` - ${area.location}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
               Map Location (optional)
             </label>
             <Suspense fallback={<div className="h-64 bg-gray-100 rounded-lg animate-pulse" />}>
@@ -590,6 +632,23 @@ export default function PollingStationsPage() {
             value={editForm.location}
             onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
           />
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Electoral Area
+            </label>
+            <select
+              value={editForm.electoralArea}
+              onChange={(e) => setEditForm({ ...editForm, electoralArea: e.target.value })}
+              className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+            >
+              <option value="">Unassigned</option>
+              {(Array.isArray(electoralAreas) ? electoralAreas : []).map((area) => (
+                <option key={area.id} value={area.name}>
+                  {area.name}{area.location ? ` - ${area.location}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
               Map Location
@@ -639,7 +698,7 @@ export default function PollingStationsPage() {
             <p className="text-xs font-semibold text-gray-600 mb-1">Required columns</p>
             <p className="text-xs text-gray-500 font-mono">psCode, name</p>
             <p className="text-xs font-semibold text-gray-600 mt-2 mb-1">Optional columns</p>
-            <p className="text-xs text-gray-500 font-mono">location, ward, latitude, longitude</p>
+            <p className="text-xs text-gray-500 font-mono">location, electoralArea, latitude, longitude</p>
           </div>
 
           <div>

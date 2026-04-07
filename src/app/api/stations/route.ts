@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
-import { parseBody, stationCreateSchema, stationUpdateSchema, ValidationError, parsePagination } from '@/lib/validations';
+import { parseBody, stationCreateSchema, stationUpdateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 
 export const GET = apiHandler(async (request: Request) => {
@@ -10,7 +10,6 @@ export const GET = apiHandler(async (request: Request) => {
 
   const { searchParams } = new URL(request.url);
   const electionId = searchParams.get('electionId');
-  const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 50 });
 
   let activeElectionId = electionId;
   if (!activeElectionId) {
@@ -18,45 +17,59 @@ export const GET = apiHandler(async (request: Request) => {
     activeElectionId = active?.id || null;
   }
 
-  const [total, stations] = await prisma.$transaction([
-    prisma.pollingStation.count(),
-    prisma.pollingStation.findMany({
-      skip,
-      take: limit,
-      include: {
-        agent: { select: { id: true, name: true, email: true, phone: true } },
-        voters: {
-          select: {
-            id: true,
-            turnout: activeElectionId
-              ? { where: { electionId: activeElectionId }, select: { hasVoted: true } }
-              : undefined,
-          },
-        },
-        results: activeElectionId
-          ? {
-              where: { electionId: activeElectionId },
-              include: { candidate: true },
-            }
-          : {
-              include: { candidate: true },
-            },
-      },
-      orderBy: { psCode: 'asc' },
-    }),
-  ]);
+  // Load all stations (no inline voter loading — use aggregate queries instead)
+  const stations = await prisma.pollingStation.findMany({
+    include: {
+      agent: { select: { id: true, name: true, email: true, phone: true } },
+      results: activeElectionId
+        ? { where: { electionId: activeElectionId }, include: { candidate: true } }
+        : { include: { candidate: true } },
+    },
+    orderBy: { psCode: 'asc' },
+  });
+
+  const stationIds = stations.map((s) => s.id);
+
+  // Aggregate: registered voters per station
+  const registeredCounts = await prisma.voter.groupBy({
+    by: ['stationId'],
+    where: { stationId: { in: stationIds }, deletedAt: null },
+    _count: { id: true },
+  });
+  const registeredMap = new Map(registeredCounts.map((r) => [r.stationId, r._count.id]));
+
+  // Aggregate: voted voters per station (via VoterTurnout → Voter)
+  const votedMap = new Map<string, number>();
+  if (activeElectionId) {
+    const votedCounts = await prisma.voterTurnout.groupBy({
+      by: ['voterId'],
+      where: { electionId: activeElectionId, hasVoted: true },
+      _count: { voterId: true },
+    });
+    const votedVoterIds = votedCounts.map((v) => v.voterId);
+    const BATCH = 1000;
+    for (let i = 0; i < votedVoterIds.length; i += BATCH) {
+      const batch = votedVoterIds.slice(i, i + BATCH);
+      const voters = await prisma.voter.findMany({
+        where: { id: { in: batch } },
+        select: { stationId: true },
+      });
+      for (const v of voters) {
+        votedMap.set(v.stationId, (votedMap.get(v.stationId) || 0) + 1);
+      }
+    }
+  }
 
   const stationData = stations.map((station) => {
-    const totalRegistered = station.voters.length;
-    const totalVoted = activeElectionId
-      ? station.voters.filter((v) => v.turnout?.some((t) => t.hasVoted)).length
-      : 0;
+    const totalRegistered = registeredMap.get(station.id) || 0;
+    const totalVoted = votedMap.get(station.id) || 0;
 
     return {
       id: station.id,
       psCode: station.psCode,
       name: station.name,
       location: station.location,
+      electoralArea: station.electoralArea,
       latitude: station.latitude,
       longitude: station.longitude,
       agentId: station.agentId,
@@ -99,11 +112,19 @@ export const POST = apiHandler(async (request: Request) => {
       psCode: data.psCode,
       name: data.name,
       location: data.location || null,
-      ward: data.ward || null,
+      electoralArea: data.electoralArea || null,
       latitude: data.latitude ?? null,
       longitude: data.longitude ?? null,
     },
   });
+
+  if (data.electoralArea) {
+    await prisma.electoralArea.upsert({
+      where: { name: data.electoralArea },
+      create: { name: data.electoralArea },
+      update: {},
+    });
+  }
 
   await logAudit({
     userId: user.id,
@@ -111,7 +132,7 @@ export const POST = apiHandler(async (request: Request) => {
     entity: 'PollingStation',
     entityId: station.id,
     detail: `Created polling station "${data.psCode} - ${data.name}"`,
-    metadata: { psCode: data.psCode, name: data.name },
+    metadata: { psCode: data.psCode, name: data.name, electoralArea: data.electoralArea || null },
   });
 
   broadcastEvent('station:updated', { stationId: station.id, action: 'created' });
@@ -184,9 +205,17 @@ export async function PUT(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.location !== undefined) updateData.location = data.location || null;
-    if (data.ward !== undefined) updateData.ward = data.ward || null;
+    if (data.electoralArea !== undefined) updateData.electoralArea = data.electoralArea || null;
     if (data.latitude !== undefined) updateData.latitude = data.latitude;
     if (data.longitude !== undefined) updateData.longitude = data.longitude;
+
+    if (typeof updateData.electoralArea === 'string' && updateData.electoralArea) {
+      await prisma.electoralArea.upsert({
+        where: { name: updateData.electoralArea },
+        create: { name: updateData.electoralArea },
+        update: {},
+      });
+    }
 
     const station = await prisma.pollingStation.update({
       where: { id: data.id },

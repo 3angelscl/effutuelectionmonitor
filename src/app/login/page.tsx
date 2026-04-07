@@ -12,6 +12,7 @@ import {
   CheckBadgeIcon,
   ArrowRightIcon,
 } from '@heroicons/react/24/outline';
+import ParticlesOverlay from '@/components/ui/ParticlesOverlay';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -73,7 +74,8 @@ export default function LoginPage() {
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: "url('/uploads/happy-women.jpg')" }}
       />
-      <div className="absolute inset-0 bg-[#2D355C]/70" />
+      <ParticlesOverlay />
+      <div className="absolute inset-0 z-[2] bg-[#2D355C]/70" />
 
       {/* Login Card */}
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg border border-gray-100 p-8 relative z-10">
