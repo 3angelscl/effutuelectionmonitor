@@ -29,7 +29,7 @@ export default function ParticlesOverlay() {
 
     const buildParticles = () => {
       particles.length = 0;
-      const count = Math.max(28, Math.min(80, Math.floor((width * height) / 24000)));
+      const count = Math.max(64, Math.min(180, Math.floor((width * height) / 13000)));
 
       for (let index = 0; index < count; index += 1) {
         particles.push({
@@ -82,11 +82,11 @@ export default function ParticlesOverlay() {
           const dy = particle.y - other.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
-          if (distance < 120) {
+          if (distance < 150) {
             context.beginPath();
             context.moveTo(particle.x, particle.y);
             context.lineTo(other.x, other.y);
-            context.strokeStyle = `rgba(255, 255, 255, ${0.12 * (1 - distance / 120)})`;
+            context.strokeStyle = `rgba(255, 255, 255, ${0.16 * (1 - distance / 150)})`;
             context.lineWidth = 1;
             context.stroke();
           }
