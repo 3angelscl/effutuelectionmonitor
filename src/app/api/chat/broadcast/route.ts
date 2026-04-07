@@ -3,6 +3,9 @@ import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { logAudit } from '@/lib/audit';
+import { sendBroadcastEmail } from '@/lib/email';
+import { sendPushToAllAgents } from '@/lib/push';
+import { sanitizeAndLimit } from '@/lib/sanitize';
 
 // 5 broadcasts per hour per admin
 const chatBroadcastRateLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 5 });
@@ -64,10 +67,15 @@ export async function POST(request: NextRequest) {
     const adminId = user.id;
     const adminName = user.name;
     const trimmedMessage = message.trim();
+    const sanitizedMessage = sanitizeAndLimit(trimmedMessage, 5000);
+
+    if (!sanitizedMessage) {
+      return NextResponse.json({ error: 'Message must contain visible text' }, { status: 400 });
+    }
 
     const agents = await prisma.user.findMany({
       where: { role: 'AGENT', deletedAt: null },
-      select: { id: true },
+      select: { id: true, email: true },
     });
 
     if (agents.length === 0) {
@@ -86,18 +94,35 @@ export async function POST(request: NextRequest) {
         userId: agent.id,
         type: 'BROADCAST',
         title: `Broadcast from ${adminName}`,
-        message: trimmedMessage,
+        message: sanitizedMessage,
         link: '/agent/chat',
       })),
     });
+
+    // Fire-and-forget: email + push to all agents
+    const agentEmails = agents.map((a) => a.email).filter(Boolean) as string[];
+    if (agentEmails.length > 0) {
+      sendBroadcastEmail({
+        recipients: agentEmails,
+        senderName: adminName,
+        subject: 'New broadcast message',
+        message: sanitizedMessage,
+      }).catch(() => {});
+    }
+    sendPushToAllAgents({
+      title: `Broadcast from ${adminName}`,
+      body: sanitizedMessage.slice(0, 120),
+      url: '/agent/chat',
+      tag: 'broadcast',
+    }).catch(() => {});
 
     await logAudit({
       userId: adminId,
       action: 'CREATE',
       entity: 'Broadcast',
       entityId: `bulk_${Date.now()}`,
-      detail: `Sent broadcast to ${agents.length} agents: "${trimmedMessage.slice(0, 50)}${trimmedMessage.length > 50 ? '...' : ''}"`,
-      metadata: { recipientCount: agents.length, messagePreview: trimmedMessage },
+      detail: `Sent broadcast to ${agents.length} agents: "${sanitizedMessage.slice(0, 50)}${sanitizedMessage.length > 50 ? '...' : ''}"`,
+      metadata: { recipientCount: agents.length, messagePreview: sanitizedMessage },
     });
 
     return NextResponse.json({ success: true, sentTo: agents.length });

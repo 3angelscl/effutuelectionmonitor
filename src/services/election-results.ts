@@ -60,7 +60,10 @@ export async function submitResults(input: SubmitResultsInput): Promise<SubmitRe
 
   if (user.role === 'AGENT') {
     const latestCheckIn = await prisma.agentCheckIn.findFirst({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+        stationId,
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (!latestCheckIn || latestCheckIn.type !== 'CHECK_IN') {

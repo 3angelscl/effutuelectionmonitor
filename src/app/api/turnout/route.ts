@@ -50,7 +50,10 @@ export async function PATCH(request: NextRequest) {
       }
 
       const latestCheckIn = await prisma.agentCheckIn.findFirst({
-        where: { userId: user.id },
+        where: {
+          userId: user.id,
+          stationId: voter.stationId,
+        },
         orderBy: { createdAt: 'desc' },
       });
 
