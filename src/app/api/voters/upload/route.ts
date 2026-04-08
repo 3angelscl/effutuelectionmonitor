@@ -4,6 +4,24 @@ import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import * as XLSX from 'xlsx';
 
+function readOptionalPhotoUrl(row: Record<string, unknown>): { photo: string | null; error?: string } {
+  const raw = String(
+    row['photo_url'] ??
+    row['photoUrl'] ??
+    row['photo'] ??
+    row['Photo'] ??
+    row['PHOTO_URL'] ??
+    row['cloudinary_url'] ??
+    row['cloudinaryUrl'] ??
+    row['Cloudinary URL'] ??
+    '',
+  ).trim();
+
+  if (!raw) return { photo: null };
+  if (raw.startsWith('/') || URL.canParse(raw)) return { photo: raw };
+  return { photo: null, error: 'Invalid photo URL' };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole('ADMIN');
@@ -74,6 +92,7 @@ export async function POST(request: NextRequest) {
       lastName: string;
       age: number;
       stationId: string;
+      photo: string | null;
     }[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -85,9 +104,16 @@ export async function POST(request: NextRequest) {
       const lastName = String(row['last_name'] || row['lastName'] || row['Last Name'] || row['LAST_NAME'] || '').trim();
       const age = parseInt(String(row['age'] || row['Age'] || row['AGE'] || '0'));
       const psCode = String(row['ps_code'] || row['psCode'] || row['PS Code'] || row['PS_CODE'] || row['polling_station_code'] || '').trim();
+      const { photo, error: photoError } = readOptionalPhotoUrl(row);
 
       if (!voterId || !firstName || !lastName || !psCode) {
         errors.push(`Row ${rowNum}: Missing required fields`);
+        errorCount++;
+        continue;
+      }
+
+      if (photoError) {
+        errors.push(`Row ${rowNum}: ${photoError} for voter ${voterId}`);
         errorCount++;
         continue;
       }
@@ -118,7 +144,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      votersToCreate.push({ voterId, firstName, lastName, age, stationId });
+      votersToCreate.push({ voterId, firstName, lastName, age, stationId, photo });
       existingKeys.add(key);
     }
 

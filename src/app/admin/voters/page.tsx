@@ -620,6 +620,17 @@ export default function VoterManagement() {
                 </label>
               </div>
             </div>
+            <div className="mt-3">
+              <Input
+                label="Photo URL"
+                value={addForm.photo}
+                onChange={(e) => setAddForm((f) => ({ ...f, photo: e.target.value }))}
+                placeholder="Paste a Cloudinary or public image URL"
+              />
+              <p className="mt-1 text-[11px] text-gray-500">
+                Optional. You can paste a Cloudinary URL instead of uploading a file.
+              </p>
+            </div>
           </div>
 
           <Input
@@ -694,12 +705,15 @@ export default function VoterManagement() {
         <form onSubmit={handleUpload} className="space-y-4">
           {/* Format guide + template download */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
-            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Required CSV columns</p>
-            <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, ps_code</code>
+            <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">CSV columns</p>
+            <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, ps_code, photo_url (optional)</code>
+            <p className="text-[11px] text-blue-700">
+              `photo_url` can be a Cloudinary URL or any public image URL. Leave it blank if the voter has no photo yet.
+            </p>
             <button
               type="button"
               onClick={() => {
-                const csv = 'voter_id,first_name,last_name,age,ps_code\nV001,John,Mensah,35,B100101\nV002,Abena,Asante,42,B100101\n';
+                const csv = 'voter_id,first_name,last_name,age,ps_code,photo_url\nV001,John,Mensah,35,B100101,https://res.cloudinary.com/demo/image/upload/v1/voter-photos/v001.jpg\nV002,Abena,Asante,42,B100101,\n';
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -838,6 +852,17 @@ export default function VoterManagement() {
                   </button>
                 )}
               </div>
+            </div>
+            <div className="mt-3">
+              <Input
+                label="Photo URL"
+                value={editForm.photo}
+                onChange={(e) => setEditForm((f) => ({ ...f, photo: e.target.value }))}
+                placeholder="Paste a Cloudinary or public image URL"
+              />
+              <p className="mt-1 text-[11px] text-gray-500">
+                Optional. You can paste a Cloudinary URL instead of uploading a file.
+              </p>
             </div>
           </div>
 

@@ -65,8 +65,13 @@ export default function ElectoralAreasOverviewMap({ areas, height = 'h-[32rem]' 
     const map = mapInstance.current;
     if (!map || !mapRef.current) return;
 
-    const raf = requestAnimationFrame(() => map.invalidateSize(true));
-    return () => cancelAnimationFrame(raf);
+    const timer = window.setTimeout(() => {
+      if (mapInstance.current === map) {
+        map.invalidateSize(true);
+      }
+    }, 50);
+
+    return () => window.clearTimeout(timer);
   }, [areas]);
 
   useEffect(() => {

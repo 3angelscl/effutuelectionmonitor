@@ -44,6 +44,7 @@ const ElectoralAreaBoundaryEditor = forwardRef<ElectoralAreaBoundaryEditorHandle
   const polygonRef = useRef<L.Polygon | null>(null);
   const stationLayerRef = useRef<L.LayerGroup | null>(null);
   const vertexLayerRef = useRef<L.LayerGroup | null>(null);
+  const mountedRef = useRef(true);
   const [points, setPoints] = useState<LatLngPoint[]>(initialPoints);
 
   const stationsWithCoords = useMemo(
@@ -64,6 +65,7 @@ const ElectoralAreaBoundaryEditor = forwardRef<ElectoralAreaBoundaryEditorHandle
   }, [onPointsChange, points.length]);
 
   useEffect(() => {
+    mountedRef.current = true;
     if (!mapRef.current || mapInstance.current) return;
 
     const map = L.map(mapRef.current, { zoomAnimation: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
@@ -82,6 +84,7 @@ const ElectoralAreaBoundaryEditor = forwardRef<ElectoralAreaBoundaryEditorHandle
     });
 
     return () => {
+      mountedRef.current = false;
       map.remove();
       mapInstance.current = null;
       polygonRef.current = null;
@@ -95,8 +98,13 @@ const ElectoralAreaBoundaryEditor = forwardRef<ElectoralAreaBoundaryEditorHandle
     if (!map || !mapRef.current) return;
 
     // Leaflet maps inside modals need an explicit resize once visible.
-    const raf = requestAnimationFrame(() => map.invalidateSize(true));
-    return () => cancelAnimationFrame(raf);
+    const timer = window.setTimeout(() => {
+      if (mountedRef.current && mapInstance.current === map) {
+        map.invalidateSize(true);
+      }
+    }, 50);
+
+    return () => window.clearTimeout(timer);
   }, [areaName]);
 
   useEffect(() => {
@@ -183,7 +191,6 @@ const ElectoralAreaBoundaryEditor = forwardRef<ElectoralAreaBoundaryEditorHandle
       }
     }
 
-    map.invalidateSize(true);
   }, [areaName, points]);
 
   const clearBoundary = () => setPoints([]);
