@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { sanitizeText } from './sanitize';
 import { ApiError } from './api-auth';
+import { isValidBoundaryGeoJson } from './electoral-area-boundary';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -241,12 +242,22 @@ export const stationUpdateSchema = z.object({
 export const electoralAreaCreateSchema = z.object({
   name: z.string().min(1, 'Electoral area name is required').max(200).transform((s) => sanitizeText(s)),
   location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  boundaryGeoJson: z
+    .string()
+    .optional()
+    .nullable()
+    .refine((value) => isValidBoundaryGeoJson(value), 'Boundary must be a valid polygon'),
 });
 
 export const electoralAreaUpdateSchema = z.object({
   id: z.string().uuid('Valid electoral area ID required'),
   name: z.string().min(1, 'Electoral area name is required').max(200).transform((s) => sanitizeText(s)),
   location: z.string().max(500).optional().nullable().transform((s) => (s ? sanitizeText(s) : s)),
+  boundaryGeoJson: z
+    .string()
+    .optional()
+    .nullable()
+    .refine((value) => isValidBoundaryGeoJson(value), 'Boundary must be a valid polygon'),
 });
 
 export const stationAssignSchema = z.object({

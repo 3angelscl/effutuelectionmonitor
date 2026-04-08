@@ -4,6 +4,8 @@ import { requireAuth, ApiError, apiHandler } from '@/lib/api-auth';
 import { parseBody, chatSendSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { getOnlineUserIds } from '@/lib/presence';
+import { sendPushToUser } from '@/lib/push';
 
 // 60 messages per minute per user
 const chatRateLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 60 });
@@ -108,6 +110,8 @@ export const GET = apiHandler(async (request: Request) => {
     lastMessage: string;
     lastMessageAt: Date;
     unreadCount: number;
+    isOnline: boolean;
+    isPinned: boolean;
   }>();
 
   for (const msg of sentMessages) {
@@ -125,6 +129,8 @@ export const GET = apiHandler(async (request: Request) => {
         lastMessage: msg.message,
         lastMessageAt: msg.createdAt,
         unreadCount: 0,
+        isOnline: false,
+        isPinned: false,
       });
     }
   }
@@ -145,8 +151,57 @@ export const GET = apiHandler(async (request: Request) => {
         lastMessage: msg.message,
         lastMessageAt: msg.createdAt,
         unreadCount: 0,
+        isOnline: false,
+        isPinned: false,
       });
     }
+  }
+
+  // Always include all ADMIN and OFFICER users in the conversation list so
+  // agents (and other users) can contact them at any time.
+  const staffUsers = await prisma.user.findMany({
+    where: {
+      role: { in: ['ADMIN', 'OFFICER'] },
+      id: { not: userId },
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      photo: true,
+      role: true,
+      assignedStations: { select: { name: true, psCode: true }, take: 1 },
+    },
+  });
+
+  for (const staff of staffUsers) {
+    if (!conversations.has(staff.id)) {
+      conversations.set(staff.id, {
+        user: {
+          id: staff.id,
+          name: staff.name,
+          email: staff.email,
+          photo: staff.photo,
+          role: staff.role,
+          station: staff.assignedStations[0]?.name ?? null,
+        },
+        lastMessage: '',
+        lastMessageAt: new Date(0),
+        unreadCount: 0,
+        isOnline: false,
+        isPinned: true,
+      });
+    } else {
+      conversations.get(staff.id)!.isPinned = true;
+    }
+  }
+
+  // Derive presence from live SSE connections — a user is online iff they
+  // currently have at least one open connection to /api/events.
+  const onlineIds = getOnlineUserIds();
+  for (const [id, conv] of conversations.entries()) {
+    if (onlineIds.has(id)) conv.isOnline = true;
   }
 
   const unreadCounts = await prisma.chatMessage.groupBy({
@@ -161,7 +216,16 @@ export const GET = apiHandler(async (request: Request) => {
   }
 
   const conversationList = Array.from(conversations.values())
-    .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+    .sort((a, b) => {
+      // Online users first, then pinned staff, then conversations with
+      // messages, then by recency.
+      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      const aHasMsg = a.lastMessageAt.getTime() > 0;
+      const bHasMsg = b.lastMessageAt.getTime() > 0;
+      if (aHasMsg !== bHasMsg) return aHasMsg ? -1 : 1;
+      return b.lastMessageAt.getTime() - a.lastMessageAt.getTime();
+    });
 
   return NextResponse.json({ conversations: conversationList });
 });
@@ -208,6 +272,14 @@ export const POST = apiHandler(async (request: Request) => {
       link: chatLink,
     },
   });
+
+  // Fire-and-forget push notification to the recipient
+  sendPushToUser(data.receiverId, {
+    title: `Message from ${currentUser.name}`,
+    body: data.message.slice(0, 120),
+    url: chatLink,
+    tag: `chat-${currentUser.id}`,
+  }).catch(() => {});
 
   // Broadcast real-time events
   broadcastEvent('chat:message', {

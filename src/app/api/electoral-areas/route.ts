@@ -8,6 +8,7 @@ import {
   parseBody,
   ValidationError,
 } from '@/lib/validations';
+import { getBoundaryCenter, parseBoundaryGeoJson } from '@/lib/electoral-area-boundary';
 
 async function syncElectoralAreaRecords() {
   const stationAreas = await prisma.pollingStation.findMany({
@@ -43,13 +44,21 @@ export const GET = apiHandler(async () => {
         id: true,
         psCode: true,
         name: true,
+        latitude: true,
+        longitude: true,
         electoralArea: true,
       },
       orderBy: [{ electoralArea: 'asc' }, { psCode: 'asc' }],
     }),
   ]);
 
-  const stationsByArea = new Map<string, { id: string; psCode: string; name: string }[]>();
+  const stationsByArea = new Map<string, {
+    id: string;
+    psCode: string;
+    name: string;
+    latitude: number | null;
+    longitude: number | null;
+  }[]>();
   for (const station of stations) {
     const areaName = station.electoralArea?.trim();
     if (!areaName) continue;
@@ -58,19 +67,29 @@ export const GET = apiHandler(async () => {
       id: station.id,
       psCode: station.psCode,
       name: station.name,
+      latitude: station.latitude,
+      longitude: station.longitude,
     });
   }
 
   return NextResponse.json(
-    areas.map((area) => ({
-      id: area.id,
-      name: area.name,
-      location: area.location,
-      createdAt: area.createdAt,
-      updatedAt: area.updatedAt,
-      stations: stationsByArea.get(area.name) ?? [],
-      stationCount: (stationsByArea.get(area.name) ?? []).length,
-    })),
+    areas.map((area) => {
+      const boundaryPoints = parseBoundaryGeoJson(area.boundaryGeoJson);
+      const center = getBoundaryCenter(boundaryPoints);
+
+      return {
+        id: area.id,
+        name: area.name,
+        location: area.location,
+        boundaryGeoJson: area.boundaryGeoJson,
+        boundaryPointCount: boundaryPoints.length,
+        boundaryCenter: center ? { latitude: center[0], longitude: center[1] } : null,
+        createdAt: area.createdAt,
+        updatedAt: area.updatedAt,
+        stations: stationsByArea.get(area.name) ?? [],
+        stationCount: (stationsByArea.get(area.name) ?? []).length,
+      };
+    }),
   );
 });
 
@@ -95,6 +114,7 @@ export const POST = apiHandler(async (request: Request) => {
     data: {
       name: data.name,
       location: data.location || null,
+      boundaryGeoJson: data.boundaryGeoJson || null,
     },
   });
 
@@ -104,7 +124,11 @@ export const POST = apiHandler(async (request: Request) => {
     entity: 'ElectoralArea',
     entityId: area.id,
     detail: `Created electoral area "${area.name}"`,
-    metadata: { name: area.name, location: area.location },
+    metadata: {
+      name: area.name,
+      location: area.location,
+      hasBoundary: Boolean(area.boundaryGeoJson),
+    },
   });
 
   return NextResponse.json(area, { status: 201 });
@@ -141,6 +165,7 @@ export const PUT = apiHandler(async (request: Request) => {
       data: {
         name: data.name,
         location: data.location || null,
+        boundaryGeoJson: data.boundaryGeoJson || null,
       },
     });
 
@@ -164,6 +189,7 @@ export const PUT = apiHandler(async (request: Request) => {
       previousName: existing.name,
       name: updated.name,
       location: updated.location,
+      hasBoundary: Boolean(updated.boundaryGeoJson),
     },
   });
 

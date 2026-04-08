@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { parseBoundaryGeoJson } from '@/lib/electoral-area-boundary';
 
 interface StationData {
   id: string;
@@ -21,6 +22,7 @@ interface StationData {
 
 interface StationMapInnerProps {
   stations: StationData[];
+  areas: { id: string; name: string; boundaryGeoJson: string | null }[];
 }
 
 const DEFAULT_CENTER: [number, number] = [5.355, -0.630];
@@ -71,10 +73,11 @@ function getStatusColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'):
   }
 }
 
-export default function StationMapInner({ stations }: StationMapInnerProps) {
+export default function StationMapInner({ stations, areas }: StationMapInnerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
   const markersRef = useRef<L.CircleMarker[]>([]);
+  const areaLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
@@ -85,14 +88,38 @@ export default function StationMapInner({ stations }: StationMapInnerProps) {
       attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
 
+    areaLayerRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
     return () => {
       map.remove();
       mapInstance.current = null;
       markersRef.current = [];
+      areaLayerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapInstance.current;
+    const areaLayer = areaLayerRef.current;
+    if (!map || !areaLayer) return;
+
+    areaLayer.clearLayers();
+
+    areas.forEach((area) => {
+      const points = parseBoundaryGeoJson(area.boundaryGeoJson);
+      if (points.length < 3) return;
+
+      L.polygon(points, {
+        color: '#2563eb',
+        weight: 2,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.08,
+      })
+        .bindTooltip(area.name, { sticky: true })
+        .addTo(areaLayer);
+    });
+  }, [areas]);
 
   useEffect(() => {
     const map = mapInstance.current;
@@ -153,11 +180,12 @@ export default function StationMapInner({ stations }: StationMapInnerProps) {
     }
 
     // Fit bounds if we have markers
-    if (markersRef.current.length > 0) {
-      const group = L.featureGroup(markersRef.current);
+    const layers: L.Layer[] = [...markersRef.current, ...(areaLayerRef.current?.getLayers() ?? [])];
+    if (layers.length > 0) {
+      const group = L.featureGroup(layers);
       map.fitBounds(group.getBounds().pad(0.1), { maxZoom: 12 });
     }
-  }, [stations]);
+  }, [stations, areas]);
 
   return (
     <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '400px' }} />

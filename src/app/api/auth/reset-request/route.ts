@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import crypto from 'crypto';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/client-ip';
+import { sendPasswordResetEmail } from '@/lib/email';
 
 // 5 reset requests per 15 minutes per IP
 const resetRequestLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5 });
@@ -45,9 +46,15 @@ export async function POST(request: NextRequest) {
       data: { userId: user.id, token, expiresAt },
     });
 
-    // In production, send email here. For now, log the reset link.
     const resetUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
-    console.log(`[Password Reset] Reset link for ${email}: ${resetUrl}`);
+    try {
+      await sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl });
+    } catch (error) {
+      // Preserve the endpoint's anti-enumeration contract: callers should
+      // receive the same success response whether the email exists or SMTP is
+      // temporarily unavailable.
+      console.error('Password reset email delivery failed:', error);
+    }
 
     return NextResponse.json({
       success: true,

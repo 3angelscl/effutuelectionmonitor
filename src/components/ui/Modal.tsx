@@ -8,7 +8,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export default function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
@@ -87,12 +87,13 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     sm: 'max-w-md',
     md: 'max-w-lg',
     lg: 'max-w-2xl',
+    xl: 'max-w-5xl',
   };
 
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
@@ -100,7 +101,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
     >
       <div
         ref={modalRef}
-        className={`bg-white rounded-xl shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
+        className={`relative z-[10001] bg-white rounded-xl shadow-xl w-full ${sizes[size]} max-h-[90vh] overflow-y-auto`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

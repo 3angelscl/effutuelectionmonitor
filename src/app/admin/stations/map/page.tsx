@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Badge from '@/components/ui/Badge';
 import { ArrowLeftIcon, MapPinIcon } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface StationData {
   id: string;
@@ -23,6 +22,12 @@ interface StationData {
   totalVoted: number;
   turnoutPercentage: number;
   results: { candidateId: string; candidateName: string; party: string; votes: number }[];
+}
+
+interface ElectoralAreaData {
+  id: string;
+  name: string;
+  boundaryGeoJson: string | null;
 }
 
 function getStationStatus(station: StationData): 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING' {
@@ -46,6 +51,7 @@ const StationMapInner = dynamic(() => import('./StationMapInner'), { ssr: false 
 
 export default function StationMapPage() {
   const { data: stations } = useSWR<StationData[]>('/api/stations', fetcher);
+  const { data: areas } = useSWR<ElectoralAreaData[]>('/api/electoral-areas', fetcher);
 
   const withCoords = (Array.isArray(stations) ? stations : []).filter(
     (s) => s.latitude !== null && s.longitude !== null
@@ -86,7 +92,7 @@ export default function StationMapPage() {
         {/* Map Area */}
         <div className="flex-1 relative">
           {stations ? (
-            <StationMapInner stations={withCoords} />
+            <StationMapInner stations={withCoords} areas={Array.isArray(areas) ? areas : []} />
           ) : (
             <div className="h-full flex items-center justify-center bg-gray-100">
               <p className="text-gray-500 text-sm">Loading map...</p>
