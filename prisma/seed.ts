@@ -17,12 +17,32 @@ function getRandomCoordinates() {
   };
 }
 
-const TOTAL_VOTERS      = 150_379;
-const TOTAL_STATIONS    = 155;
-const TOTAL_AGENTS      = 156;   // 155 get a station, 1 doesn't
-const ACTIVE_STATIONS   = 131;   // stations with votes + results (= stationsReporting)
-const TARGET_VOTED      = Math.round(TOTAL_VOTERS * 0.63); // 94,739
+// 18 Electoral Areas with exact station counts (total = 142)
+const ELECTORAL_AREAS = [
+  { name: 'PONKOREKYIR',             count: 4  },
+  { name: 'NDAAMBA',                 count: 3  },
+  { name: 'MBURABAMU',               count: 4  },
+  { name: 'ALATAKOKODO',             count: 6  },
+  { name: 'DOMEABRA-POLICE DEPOT',   count: 2  },
+  { name: 'DOMEABRA-OTOTOASE',       count: 5  },
+  { name: 'PENKYE',                  count: 5  },
+  { name: 'OSAKAM-FETTEH',           count: 11 },
+  { name: 'EYIPEY',                  count: 9  },
+  { name: 'SANKOR-DON BOSCO',        count: 20 },
+  { name: 'DWOMBA',                  count: 8  },
+  { name: 'ABASRABA SOUTH',          count: 6  },
+  { name: 'DONKORYIEM-OBRAWOGUM',    count: 7  },
+  { name: 'ABASRABA NORTH',          count: 8  },
+  { name: 'KOJO BEEDU SOUTH',        count: 8  },
+  { name: 'KOJO BEEDU NORTH',        count: 23 },
+  { name: 'GYAHADZE',                count: 5  },
+  { name: 'ESSUEKYIR',               count: 8  },
+];
 
+const TOTAL_VOTERS      = 137_812;
+const TOTAL_STATIONS    = 142;
+const TOTAL_AGENTS      = 143;   // 142 get a station, 1 doesn't
+const ACTIVE_STATIONS   = 120;   // stations with votes + results (= stationsReporting)
 async function main() {
   console.log('Seeding database...');
 
@@ -99,25 +119,31 @@ async function main() {
   });
   console.log('✓ Viewer and Officer created');
 
-  // ── 155 Polling Stations ───────────────────────────────────────────────────
-  console.log(`Creating ${TOTAL_STATIONS} polling stations...`);
+  // ── 142 Polling Stations across 18 Electoral Areas ───────────────────────
+  console.log(`Creating ${TOTAL_STATIONS} polling stations across ${ELECTORAL_AREAS.length} electoral areas...`);
   const stations: { id: string }[] = [];
-  const stationBatch = 50;
-  for (let b = 0; b < Math.ceil(TOTAL_STATIONS / stationBatch); b++) {
-    const start = b * stationBatch;
-    const end = Math.min(start + stationBatch, TOTAL_STATIONS);
-    const batch = [];
-    for (let i = start; i < end; i++) {
+
+  // Build flat station list ordered by electoral area
+  const stationDefs: { psCode: string; name: string; location: string; electoralArea: string; latitude: number; longitude: number }[] = [];
+  let stationCounter = 0;
+  for (const area of ELECTORAL_AREAS) {
+    for (let j = 0; j < area.count; j++) {
+      stationCounter++;
       const coords = getRandomCoordinates();
-      batch.push({
-        psCode: `PS${String(i + 1).padStart(4, '0')}`,
-        name: `Polling Station ${i + 1}`,
-        location: `Location ${i + 1}, Effutu District`,
-        ward: `Ward ${Math.floor(i / 10) + 1}`,
+      stationDefs.push({
+        psCode: `PS${String(stationCounter).padStart(4, '0')}`,
+        name: `Polling Station ${stationCounter}`,
+        location: `${area.name}, Effutu District`,
+        electoralArea: area.name,
         latitude: coords.latitude,
         longitude: coords.longitude,
       });
     }
+  }
+
+  const stationBatch = 50;
+  for (let b = 0; b < Math.ceil(stationDefs.length / stationBatch); b++) {
+    const batch = stationDefs.slice(b * stationBatch, (b + 1) * stationBatch);
     const created = await Promise.all(batch.map((s) => prisma.pollingStation.create({ data: s })));
     stations.push(...created);
   }
@@ -148,8 +174,8 @@ async function main() {
   }
   console.log(`✓ ${agents.length} agents created`);
 
-  // Assign 155 stations to the first 155 agents (agent 156 gets no station)
-  console.log('Assigning all 155 stations to agents...');
+  // Assign 142 stations to the first 142 agents (agent 143 gets no station)
+  console.log('Assigning all 142 stations to agents...');
   for (let i = 0; i < stations.length; i++) {
     await prisma.pollingStation.update({
       where: { id: stations[i].id },
@@ -170,8 +196,8 @@ async function main() {
   console.log(`✓ ${candidates.length} candidates created`);
 
   // ── Voters + Turnout + Results ─────────────────────────────────────────────
-  // Voter distribution: floor(150379/155)=970, remainder=29
-  // 29 stations get 971 voters, 126 stations get 970 voters
+  // Voter distribution: floor(137812/142)=970, remainder=72
+  // 72 stations get 971 voters, 70 stations get 970 voters
   const baseVotersPerStation = Math.floor(TOTAL_VOTERS / TOTAL_STATIONS);
   const remainder = TOTAL_VOTERS - baseVotersPerStation * TOTAL_STATIONS;
 
@@ -182,13 +208,14 @@ async function main() {
 
   const voterFirstNames = ['Kofi','Kwame','Ama','Akua','Yaw','Esi','Kwesi','Abena','Kojo','Adwoa','Kwaku','Afia','Nana','Efua','Papa','Maame'];
   const voterLastNames  = ['Agyemang','Serwaa','Bekoe','Mensah','Preko','Ofori','Asante','Boateng','Appiah','Ibrahim','Quansah','Annan','Amoah','Owusu'];
+  const voterGenders = ['Male', 'Female'] as const;
 
   let voterIdCounter = 3_000_000_000;
   let totalCreatedVoters = 0;
   let totalVotedCreated = 0;
   const VOTER_BATCH = 2000;
 
-  console.log(`Creating ${TOTAL_VOTERS.toLocaleString()} voters across ${TOTAL_STATIONS} stations...`);
+  console.log(`Creating ${TOTAL_VOTERS.toLocaleString()} voters across ${TOTAL_STATIONS} stations (18 electoral areas)...`);
   console.log(`${ACTIVE_STATIONS} active stations will have turnout + results, ${TOTAL_STATIONS - ACTIVE_STATIONS} pending.`);
 
   for (let si = 0; si < stations.length; si++) {
@@ -210,6 +237,7 @@ async function main() {
           firstName: voterFirstNames[Math.floor(Math.random() * voterFirstNames.length)],
           lastName:  voterLastNames[Math.floor(Math.random() * voterLastNames.length)],
           age: 18 + Math.floor(Math.random() * 60),
+          gender: voterGenders[Math.floor(Math.random() * voterGenders.length)],
           stationId: station.id,
         });
       }
@@ -293,14 +321,14 @@ async function main() {
   console.log('\n✅ Seed complete!');
   console.log(`   Voters:            ${totalCreatedVoters.toLocaleString()}`);
   console.log(`   Voted:             ${totalVotedCreated.toLocaleString()} (${overallTurnout}%)`);
-  console.log(`   Stations:          ${TOTAL_STATIONS} (${ACTIVE_STATIONS} reporting, ${TOTAL_STATIONS - ACTIVE_STATIONS} pending)`);
+  console.log(`   Stations:          ${TOTAL_STATIONS} across 18 electoral areas (${ACTIVE_STATIONS} reporting, ${TOTAL_STATIONS - ACTIVE_STATIONS} pending)`);
   console.log(`   Agents:            ${TOTAL_AGENTS} (${TOTAL_STATIONS} with stations, 1 unassigned)`);
   console.log(`   Candidates:        ${candidates.length}`);
   console.log('\nDefault accounts:');
   console.log(`   Admin:   admin@effutu.gov.gh  / Admin@2024!`);
   console.log(`   Officer: officer@effutu.gov.gh / officer123`);
   console.log(`   Viewer:  viewer@effutu.gov.gh  / viewer123`);
-  console.log(`   Agents:  agent001@effutu.gov.gh … agent156@effutu.gov.gh / agent123`);
+  console.log(`   Agents:  agent001@effutu.gov.gh … agent143@effutu.gov.gh / agent123`);
 }
 
 main()

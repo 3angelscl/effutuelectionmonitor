@@ -136,6 +136,7 @@ model Voter {
   firstName String
   lastName  String
   age       Int
+  gender    String?
   stationId String
   photo     String?
   deletedAt DateTime?

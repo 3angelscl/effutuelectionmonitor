@@ -361,6 +361,7 @@ export const voterCreateSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100).transform((s) => sanitizeText(s)),
   lastName: z.string().min(1, 'Last name is required').max(100).transform((s) => sanitizeText(s)),
   age: z.coerce.number().int().min(18, 'Must be at least 18').max(150),
+  gender: z.enum(['Male', 'Female'], { message: 'Gender is required' }),
   psCode: z.string().min(1, 'PS Code is required'),
   photo: photoSchema,
 });
@@ -371,5 +372,6 @@ export const voterUpdateSchema = z.object({
   firstName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
   lastName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
   age: z.coerce.number().int().min(18).max(150).optional(),
+  gender: z.enum(['Male', 'Female']).optional(),
   photo: photoSchema,
 });

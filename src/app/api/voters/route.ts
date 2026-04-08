@@ -6,6 +6,38 @@ import { logAudit } from '@/lib/audit';
 import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, voterCreateSchema, voterUpdateSchema } from '@/lib/validations';
 
+const AGE_BUCKETS = [
+  { label: '18-25', min: 18, max: 25 },
+  { label: '26-35', min: 26, max: 35 },
+  { label: '36-50', min: 36, max: 50 },
+  { label: '51-65', min: 51, max: 65 },
+  { label: '65+', min: 66, max: Number.POSITIVE_INFINITY },
+];
+
+function buildVoterSummary(voters: { age: number; gender: string | null }[]) {
+  const ageBands = AGE_BUCKETS.map((bucket) => ({ ...bucket, count: 0 }));
+  const genderCounts = { male: 0, female: 0, unknown: 0 };
+
+  for (const voter of voters) {
+    if (voter.gender === 'Male') {
+      genderCounts.male++;
+    } else if (voter.gender === 'Female') {
+      genderCounts.female++;
+    } else {
+      genderCounts.unknown++;
+    }
+
+    const bucket = ageBands.find((entry) => voter.age >= entry.min && voter.age <= entry.max);
+    if (bucket) bucket.count++;
+  }
+
+  return {
+    total: voters.length,
+    ageBands: ageBands.map(({ label, count }) => ({ label, count })),
+    genderCounts,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
@@ -17,12 +49,16 @@ export async function GET(request: NextRequest) {
     const safeLimit = Math.max(1, Math.min(isNaN(limit) ? 10 : limit, 100));
     const search = searchParams.get('search') || '';
     const stationId = searchParams.get('stationId') || '';
+    const electoralArea = searchParams.get('electoralArea') || '';
 
     // Build where clause — voters are global, not election-scoped
     const where: Record<string, unknown> = { deletedAt: null };
 
     if (stationId) {
       where.stationId = stationId;
+    }
+    if (electoralArea) {
+      where.pollingStation = { is: { electoralArea } };
     }
 
     if (search) {
@@ -45,7 +81,7 @@ export async function GET(request: NextRequest) {
     // Get active election for turnout status
     const activeElection = await prisma.election.findFirst({ where: { isActive: true } });
 
-    const [voters, total] = await Promise.all([
+    const [voters, total, voterSummaryRows] = await Promise.all([
       prisma.voter.findMany({
         where,
         skip: (safePage - 1) * safeLimit,
@@ -56,13 +92,20 @@ export async function GET(request: NextRequest) {
           { id: 'asc' },
         ],
         include: {
-          pollingStation: { select: { name: true, psCode: true } },
+          pollingStation: { select: { name: true, psCode: true, electoralArea: true } },
           turnout: activeElection
             ? { where: { electionId: activeElection.id }, select: { hasVoted: true, votedAt: true } }
             : undefined,
         },
       }),
       prisma.voter.count({ where }),
+      prisma.voter.findMany({
+        where,
+        select: {
+          age: true,
+          gender: true,
+        },
+      }),
     ]);
 
     // Map voters to include hasVoted from turnout for the active election
@@ -72,6 +115,7 @@ export async function GET(request: NextRequest) {
       firstName: v.firstName,
       lastName: v.lastName,
       age: v.age,
+      gender: v.gender,
       psCode: v.pollingStation?.psCode,
       stationId: v.stationId,
       photo: v.photo,
@@ -85,6 +129,7 @@ export async function GET(request: NextRequest) {
       total,
       page: safePage,
       totalPages: Math.ceil(total / safeLimit),
+      summary: buildVoterSummary(voterSummaryRows),
     });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
@@ -98,7 +143,7 @@ export async function POST(request: NextRequest) {
     const { user: admin } = await requireRole('ADMIN');
 
     const data = await parseBody(request, voterCreateSchema);
-    const { voterId, firstName, lastName, age, psCode, photo } = data;
+    const { voterId, firstName, lastName, age, gender, psCode, photo } = data;
 
     // Find the station by psCode (globally unique)
     const station = await prisma.pollingStation.findUnique({ where: { psCode } });
@@ -120,6 +165,7 @@ export async function POST(request: NextRequest) {
         firstName,
         lastName,
         age,
+        gender,
         stationId: station.id,
         photo: photo || null,
       },
@@ -183,6 +229,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
     const deleteAll = searchParams.get('deleteAll');
     const stationId = searchParams.get('stationId');
+    const electoralArea = searchParams.get('electoralArea');
 
     // Delete all voters (optionally filtered by station)
     if (deleteAll === 'true') {
@@ -215,6 +262,7 @@ export async function DELETE(request: NextRequest) {
 
       const where: Record<string, unknown> = {};
       if (stationId) where.stationId = stationId;
+      if (electoralArea) where.pollingStation = { is: { electoralArea } };
 
       // Get voter IDs to delete their turnout records
       const voterIds = await prisma.voter.findMany({

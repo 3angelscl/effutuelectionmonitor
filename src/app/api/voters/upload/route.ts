@@ -22,6 +22,22 @@ function readOptionalPhotoUrl(row: Record<string, unknown>): { photo: string | n
   return { photo: null, error: 'Invalid photo URL' };
 }
 
+function readGender(row: Record<string, unknown>): { gender: 'Male' | 'Female' | null; error?: string } {
+  const raw = String(
+    row['gender'] ??
+    row['Gender'] ??
+    row['sex'] ??
+    row['Sex'] ??
+    row['SEX'] ??
+    '',
+  ).trim().toLowerCase();
+
+  if (!raw) return { gender: null, error: 'Missing gender' };
+  if (['m', 'male'].includes(raw)) return { gender: 'Male' };
+  if (['f', 'female'].includes(raw)) return { gender: 'Female' };
+  return { gender: null, error: 'Invalid gender (use Male or Female)' };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole('ADMIN');
@@ -91,6 +107,7 @@ export async function POST(request: NextRequest) {
       firstName: string;
       lastName: string;
       age: number;
+      gender: string;
       stationId: string;
       photo: string | null;
     }[] = [];
@@ -103,11 +120,18 @@ export async function POST(request: NextRequest) {
       const firstName = String(row['first_name'] || row['firstName'] || row['First Name'] || row['FIRST_NAME'] || '').trim();
       const lastName = String(row['last_name'] || row['lastName'] || row['Last Name'] || row['LAST_NAME'] || '').trim();
       const age = parseInt(String(row['age'] || row['Age'] || row['AGE'] || '0'));
+      const { gender, error: genderError } = readGender(row);
       const psCode = String(row['ps_code'] || row['psCode'] || row['PS Code'] || row['PS_CODE'] || row['polling_station_code'] || '').trim();
       const { photo, error: photoError } = readOptionalPhotoUrl(row);
 
       if (!voterId || !firstName || !lastName || !psCode) {
         errors.push(`Row ${rowNum}: Missing required fields`);
+        errorCount++;
+        continue;
+      }
+
+      if (genderError) {
+        errors.push(`Row ${rowNum}: ${genderError} for voter ${voterId}`);
         errorCount++;
         continue;
       }
@@ -144,7 +168,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      votersToCreate.push({ voterId, firstName, lastName, age, stationId, photo });
+      votersToCreate.push({ voterId, firstName, lastName, age, gender, stationId, photo });
       existingKeys.add(key);
     }
 

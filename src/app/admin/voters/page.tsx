@@ -32,10 +32,17 @@ interface VoterData {
   firstName: string;
   lastName: string;
   age: number;
+  gender: string | null;
   psCode: string;
   photo: string | null;
   hasVoted: boolean;
-  pollingStation: { name: string; psCode: string };
+  pollingStation: { name: string; psCode: string; electoralArea: string | null };
+}
+
+interface VoterSummary {
+  total: number;
+  ageBands: { label: string; count: number }[];
+  genderCounts: { male: number; female: number; unknown: number };
 }
 
 interface VoterPage {
@@ -43,6 +50,7 @@ interface VoterPage {
   total: number;
   page: number;
   totalPages: number;
+  summary: VoterSummary;
 }
 
 export default function VoterManagement() {
@@ -57,6 +65,7 @@ export default function VoterManagement() {
   const [search, setSearch] = useState(initialSearch);
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [psFilter, setPsFilter] = useState('');
+  const [electoralAreaFilter, setElectoralAreaFilter] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -71,14 +80,14 @@ export default function VoterManagement() {
   // Add Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addForm, setAddForm] = useState({
-    voterId: '', firstName: '', lastName: '', age: '', photo: '', psCode: ''
+    voterId: '', firstName: '', lastName: '', age: '', gender: '', photo: '', psCode: ''
   });
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editVoter, setEditVoter] = useState<VoterData | null>(null);
   const [editForm, setEditForm] = useState({
-    voterId: '', firstName: '', lastName: '', age: '', photo: '',
+    voterId: '', firstName: '', lastName: '', age: '', gender: '', photo: '',
   });
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -96,6 +105,7 @@ export default function VoterManagement() {
       limit: String(PAGE_SIZE),
       ...(search && { search }),
       ...(psFilter && { stationId: psFilter }),
+      ...(electoralAreaFilter && { electoralArea: electoralAreaFilter }),
     });
     return `/api/voters?${params}`;
   };
@@ -116,8 +126,18 @@ export default function VoterManagement() {
   const allVoters = pages ? pages.flatMap((p) => Array.isArray(p?.voters) ? p.voters : []) : [];
   const total = pages?.[0]?.total || 0;
   const totalPages = pages?.[0]?.totalPages || 1;
+  const summary = pages?.[0]?.summary;
   const isLoadingMore = size > 0 && pages && typeof pages[size - 1] === 'undefined';
   const hasMore = size < totalPages;
+  const stationOptions = Array.isArray(stations) ? stations : [];
+  const electoralAreas = Array.from(new Set(
+    stationOptions
+      .map((s: { electoralArea?: string | null }) => s.electoralArea)
+      .filter((area): area is string => Boolean(area))
+  )).sort((a, b) => a.localeCompare(b));
+  const filteredStationOptions = electoralAreaFilter
+    ? stationOptions.filter((s: { electoralArea?: string | null }) => s.electoralArea === electoralAreaFilter)
+    : stationOptions;
 
   // Infinite scroll observer
   useEffect(() => {
@@ -140,7 +160,13 @@ export default function VoterManagement() {
   // Reset pages when search/filter changes
   useEffect(() => {
     setSize(1);
-  }, [search, psFilter, setSize]);
+  }, [search, psFilter, electoralAreaFilter, setSize]);
+
+  useEffect(() => {
+    if (!psFilter) return;
+    const stillVisible = filteredStationOptions.some((s: { id: string }) => s.id === psFilter);
+    if (!stillVisible) setPsFilter('');
+  }, [electoralAreaFilter, filteredStationOptions, psFilter]);
 
   const handleSearch = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,6 +226,7 @@ export default function VoterManagement() {
       firstName: voter.firstName,
       lastName: voter.lastName,
       age: String(voter.age),
+      gender: voter.gender || '',
       photo: voter.photo || '',
     });
     setError('');
@@ -243,6 +270,7 @@ export default function VoterManagement() {
       firstName: '',
       lastName: '',
       age: '',
+      gender: '',
       photo: '',
       psCode: psFilter || '', // Default to current filter station
     });
@@ -295,6 +323,7 @@ export default function VoterManagement() {
           firstName: editForm.firstName,
           lastName: editForm.lastName,
           age: editForm.age,
+          gender: editForm.gender,
           photo: editForm.photo,
         }),
       });
@@ -347,6 +376,7 @@ export default function VoterManagement() {
     try {
       const params = new URLSearchParams();
       if (psFilter) params.set('stationId', psFilter);
+      if (electoralAreaFilter) params.set('electoralArea', electoralAreaFilter);
       params.set('deleteAll', 'true');
       const res = await fetch(`/api/voters?${params}`, {
         method: 'DELETE',
@@ -390,7 +420,17 @@ export default function VoterManagement() {
 
   const deleteAllLabel = psFilter
     ? `all voters at this station`
+    : electoralAreaFilter
+      ? `all voters in ${electoralAreaFilter}`
     : `all ${total.toLocaleString()} voters`;
+  const chartTotal = summary?.total || total;
+  const ageBands = summary?.ageBands || [];
+  const genderCounts = summary?.genderCounts || { male: 0, female: 0, unknown: 0 };
+  const genderKnownTotal = genderCounts.male + genderCounts.female;
+  const malePct = genderKnownTotal > 0 ? Math.round((genderCounts.male / genderKnownTotal) * 100) : 0;
+  const femalePct = genderKnownTotal > 0 ? 100 - malePct : 0;
+  const agePeak = Math.max(1, ...ageBands.map((band) => band.count));
+  const ageBarColors = ['bg-emerald-500', 'bg-sky-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500'];
 
   return (
     <div className="flex-1">
@@ -408,7 +448,7 @@ export default function VoterManagement() {
                 placeholder="Search by voter ID or name..."
                 value={searchInput}
                 onChange={handleSearch}
-                className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                className="pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-lg w-full sm:w-65 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               />
             </div>
 
@@ -423,9 +463,25 @@ export default function VoterManagement() {
                 className="pl-10 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
               >
                 <option value="">All Stations</option>
-                {(Array.isArray(stations) ? stations : []).map((s: { id: string; psCode: string; name: string }) => (
+                {filteredStationOptions.map((s: { id: string; psCode: string; name: string }) => (
                   <option key={s.id} value={s.id}>
                     {s.psCode} - {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative">
+              <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <select
+                value={electoralAreaFilter}
+                onChange={(e) => setElectoralAreaFilter(e.target.value)}
+                className="pl-10 pr-8 py-2.5 text-sm bg-white border border-gray-200 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+              >
+                <option value="">Electoral Areas</option>
+                {electoralAreas.map((area) => (
+                  <option key={area} value={area}>
+                    {area}
                   </option>
                 ))}
               </select>
@@ -447,7 +503,13 @@ export default function VoterManagement() {
               <Button
                 variant="outline"
                 icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                onClick={() => window.open('/api/voters/export?format=xlsx', '_blank')}
+                onClick={() => {
+                  const params = new URLSearchParams({ format: 'xlsx' });
+                  if (psFilter) params.set('stationId', psFilter);
+                  if (electoralAreaFilter) params.set('electoralArea', electoralAreaFilter);
+                  if (search) params.set('search', search);
+                  window.open(`/api/voters/export?${params.toString()}`, '_blank');
+                }}
               >
                 Export
               </Button>
@@ -477,8 +539,96 @@ export default function VoterManagement() {
           </div>
         </div>
 
-        {/* Total count */}
-        <p className="text-sm text-gray-500">{total.toLocaleString()} voters found</p>
+        {/* Summary */}
+        <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+          <Card className="bg-gradient-to-br from-white to-slate-50">
+            <div className="flex items-center justify-between gap-4 mb-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Voters Found</p>
+                <p className="text-3xl font-semibold text-gray-900">{chartTotal.toLocaleString()}</p>
+                <p className="text-sm text-gray-500 mt-1">Filtered by station, electoral area, or search term.</p>
+              </div>
+              <div className="text-right text-xs text-gray-500">
+                <p>Male: {genderCounts.male.toLocaleString()}</p>
+                <p>Female: {genderCounts.female.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-gray-800">Age Demographics</h2>
+                <span className="text-xs text-gray-500">18+ voters</span>
+              </div>
+              <div className="space-y-2">
+                {ageBands.map((band) => {
+                  const width = `${Math.max(6, Math.round((band.count / agePeak) * 100))}%`;
+                  const colorClass = ageBarColors[ageBands.findIndex((item) => item.label === band.label) % ageBarColors.length];
+                  return (
+                    <div key={band.label} className="grid grid-cols-[72px_1fr_56px] items-center gap-3">
+                      <span className="text-xs font-medium text-gray-500">{band.label}</span>
+                      <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${colorClass}`}
+                          style={{ width }}
+                        />
+                      </div>
+                      <span className="text-xs font-semibold text-gray-600 text-right">
+                        {band.count.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })}
+                {ageBands.length === 0 && (
+                  <p className="text-sm text-gray-500">No age data available yet.</p>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="bg-gradient-to-br from-white to-slate-50">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Gender</p>
+                <p className="text-2xl font-semibold text-gray-900">Male / Female</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-4">
+              <div
+                className="relative h-48 w-48 rounded-full"
+                style={{
+                  background: genderKnownTotal > 0
+                    ? `conic-gradient(#16a34a 0 ${malePct}%, #e5e7eb ${malePct}% ${malePct + femalePct}%)`
+                    : 'conic-gradient(#e5e7eb 0 100%)',
+                }}
+              >
+                <div className="absolute inset-8 rounded-full bg-white shadow-sm flex flex-col items-center justify-center text-center">
+                  <span className="text-2xl font-semibold text-gray-900">{genderKnownTotal.toLocaleString()}</span>
+                  <span className="text-xs text-gray-500">Known gender records</span>
+                </div>
+              </div>
+              <div className="grid w-full grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-emerald-900">Male</span>
+                    <span className="text-xs font-semibold text-emerald-700">{malePct}%</span>
+                  </div>
+                  <p className="mt-1 text-lg font-semibold text-emerald-950">{genderCounts.male.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">Female</span>
+                    <span className="text-xs font-semibold text-gray-500">{femalePct}%</span>
+                  </div>
+                  <p className="mt-1 text-lg font-semibold text-gray-900">{genderCounts.female.toLocaleString()}</p>
+                </div>
+              </div>
+              {genderCounts.unknown > 0 && (
+                <p className="text-xs text-gray-500">{genderCounts.unknown.toLocaleString()} records still need a gender value.</p>
+              )}
+            </div>
+          </Card>
+        </div>
 
         {/* Voters Table */}
         <Card padding={false}>
@@ -489,6 +639,8 @@ export default function VoterManagement() {
                   <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Voter</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Voter ID</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Gender</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Electoral Area</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">PS Code</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Station</th>
                   <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
@@ -518,6 +670,20 @@ export default function VoterManagement() {
                     </td>
                     <td className="py-3 px-4 font-mono text-xs text-gray-700">{voter.voterId}</td>
                     <td className="py-3 px-4 text-center text-gray-600">{voter.age}</td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        voter.gender === 'Male'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : voter.gender === 'Female'
+                            ? 'bg-pink-50 text-pink-700'
+                            : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {voter.gender || 'Unknown'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-gray-600">
+                      {voter.pollingStation.electoralArea || 'Unassigned'}
+                    </td>
                     <td className="py-3 px-4 font-mono text-xs">{voter.psCode}</td>
                     <td className="py-3 px-4 text-gray-600">{voter.pollingStation.name}</td>
                     <td className="py-3 px-4 text-center">
@@ -549,8 +715,8 @@ export default function VoterManagement() {
                 ))}
                 {allVoters.length === 0 && !isValidating && (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-gray-500">
-                      {search || psFilter ? 'No voters found matching your filters' : 'No voters registered yet. Upload a voter register to get started.'}
+                    <td colSpan={canModify ? 9 : 8} className="py-12 text-center text-gray-500">
+                      {search || psFilter || electoralAreaFilter ? 'No voters found matching your filters' : 'No voters registered yet. Upload a voter register to get started.'}
                     </td>
                   </tr>
                 )}
@@ -666,22 +832,39 @@ export default function VoterManagement() {
             />
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                Polling Station
+                Gender
               </label>
               <select
-                value={addForm.psCode}
-                onChange={(e) => setAddForm((f) => ({ ...f, psCode: e.target.value }))}
+                value={addForm.gender}
+                onChange={(e) => setAddForm((f) => ({ ...f, gender: e.target.value }))}
                 required
                 className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               >
-                <option value="">Select Polling Station</option>
-                {(Array.isArray(stations) ? stations : []).map((s: { id: string; psCode: string; name: string }) => (
-                  <option key={s.id} value={s.psCode}>
-                    {s.psCode} - {s.name}
-                  </option>
-                ))}
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+              Polling Station
+            </label>
+            <select
+              value={addForm.psCode}
+              onChange={(e) => setAddForm((f) => ({ ...f, psCode: e.target.value }))}
+              required
+              className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            >
+              <option value="">Select Polling Station</option>
+              {(Array.isArray(stations) ? stations : []).map((s: { id: string; psCode: string; name: string; electoralArea?: string | null }) => (
+                <option key={s.id} value={s.psCode}>
+                  {s.psCode} - {s.name}
+                  {s.electoralArea ? ` (${s.electoralArea})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-3 justify-end pt-4">
@@ -706,14 +889,14 @@ export default function VoterManagement() {
           {/* Format guide + template download */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
             <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">CSV columns</p>
-            <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, ps_code, photo_url (optional)</code>
+            <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, gender, ps_code, photo_url (optional)</code>
             <p className="text-[11px] text-blue-700">
-              `photo_url` can be a Cloudinary URL or any public image URL. Leave it blank if the voter has no photo yet.
+              `gender` must be Male or Female. `photo_url` can be a Cloudinary URL or any public image URL. Leave it blank if the voter has no photo yet.
             </p>
             <button
               type="button"
               onClick={() => {
-                const csv = 'voter_id,first_name,last_name,age,ps_code,photo_url\nV001,John,Mensah,35,B100101,https://res.cloudinary.com/demo/image/upload/v1/voter-photos/v001.jpg\nV002,Abena,Asante,42,B100101,\n';
+                const csv = 'voter_id,first_name,last_name,age,gender,ps_code,photo_url\nV001,John,Mensah,35,Male,B100101,https://res.cloudinary.com/demo/image/upload/v1/voter-photos/v001.jpg\nV002,Abena,Asante,42,Female,B100101,\n';
                 const blob = new Blob([csv], { type: 'text/csv' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -807,6 +990,7 @@ export default function VoterManagement() {
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-xs text-gray-500">
                 Station: {editVoter.pollingStation.psCode} - {editVoter.pollingStation.name}
+                {editVoter.pollingStation.electoralArea ? ` · ${editVoter.pollingStation.electoralArea}` : ''}
               </p>
             </div>
           )}
@@ -887,13 +1071,30 @@ export default function VoterManagement() {
               required
             />
           </div>
-          <Input
-            label="Age"
-            type="number"
-            value={editForm.age}
-            onChange={(e) => setEditForm((f) => ({ ...f, age: e.target.value }))}
-            required
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Age"
+              type="number"
+              value={editForm.age}
+              onChange={(e) => setEditForm((f) => ({ ...f, age: e.target.value }))}
+              required
+            />
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                Gender
+              </label>
+              <select
+                value={editForm.gender}
+                onChange={(e) => setEditForm((f) => ({ ...f, gender: e.target.value }))}
+                required
+                className="w-full h-11 px-4 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </div>
+          </div>
           <div className="flex gap-3 justify-end pt-4">
             <Button variant="secondary" type="button" onClick={() => setEditModalOpen(false)}>
               Cancel

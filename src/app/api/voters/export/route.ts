@@ -9,6 +9,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const stationId = searchParams.get('stationId') || '';
+    const electoralArea = searchParams.get('electoralArea') || '';
+    const search = searchParams.get('search') || '';
     const format = searchParams.get('format') || 'csv';
     const electionIdParam = searchParams.get('electionId');
     const dateFrom = searchParams.get('dateFrom');
@@ -21,6 +23,22 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (stationId) where.stationId = stationId;
+    if (electoralArea) where.pollingStation = { is: { electoralArea } };
+    if (search) {
+      const parts = search.trim().split(/\s+/);
+      const conditions: unknown[] = [
+        { voterId: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+      ];
+      if (parts.length >= 2) {
+        conditions.push(
+          { firstName: { contains: parts[0], mode: 'insensitive' }, lastName: { contains: parts[1], mode: 'insensitive' } },
+          { firstName: { contains: parts[1], mode: 'insensitive' }, lastName: { contains: parts[0], mode: 'insensitive' } },
+        );
+      }
+      where.OR = conditions;
+    }
 
     // Build turnout filter
     const turnoutWhere: Record<string, unknown> = {};
@@ -38,7 +56,7 @@ export async function GET(request: NextRequest) {
     const voters = await prisma.voter.findMany({
       where,
       include: {
-        pollingStation: { select: { name: true, psCode: true } },
+        pollingStation: { select: { name: true, psCode: true, electoralArea: true } },
         turnout: Object.keys(turnoutWhere).length > 0
           ? { where: turnoutWhere, select: { hasVoted: true, votedAt: true } }
           : undefined,
@@ -51,8 +69,10 @@ export async function GET(request: NextRequest) {
       'First Name': v.firstName,
       'Last Name': v.lastName,
       'Age': v.age,
+      'Gender': v.gender || '',
       'PS Code': v.pollingStation?.psCode,
       'Station Name': v.pollingStation.name,
+      'Electoral Area': v.pollingStation.electoralArea || '',
       'Has Voted': (v.turnout?.[0]?.hasVoted) ? 'Yes' : 'No',
       'Voted At': v.turnout?.[0]?.votedAt ? v.turnout[0].votedAt.toISOString() : '',
     }));
@@ -61,19 +81,24 @@ export async function GET(request: NextRequest) {
     const worksheet = XLSX.utils.json_to_sheet(data);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Voters');
 
-    const buffer = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: format === 'xlsx' ? 'xlsx' : 'csv',
-    });
+    if (format === 'xlsx') {
+      const buffer = XLSX.write(workbook, {
+        type: 'buffer',
+        bookType: 'xlsx',
+      });
+      return new NextResponse(buffer, {
+        headers: {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': 'attachment; filename="voters.xlsx"',
+        },
+      });
+    }
 
-    const contentType = format === 'xlsx'
-      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'text/csv';
-
-    return new NextResponse(buffer, {
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    return new NextResponse(csv, {
       headers: {
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename="voters.${format}"`,
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="voters.csv"',
       },
     });
   } catch (error) {
