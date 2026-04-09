@@ -1,11 +1,11 @@
 /**
  * Field-level encryption for sensitive database columns (phone, 2FA secrets).
  *
- * Algorithm : AES-256-GCM (authenticated encryption — detects tampering)
+ * Algorithm : AES-256-GCM (authenticated encryption â€” detects tampering)
  * Key source : FIELD_ENCRYPTION_KEY env var (64-char hex = 32 bytes)
  *
  * Ciphertext format: <iv_b64>:<authTag_b64>:<ciphertext_b64>
- * This format is self-contained — every encrypted value carries its own IV.
+ * This format is self-contained â€” every encrypted value carries its own IV.
  *
  * Backwards-compatibility: if a stored value doesn't match the three-part
  * format it is assumed to be a legacy plaintext value and returned as-is.
@@ -28,9 +28,10 @@ const IV_B64_LEN = Math.ceil(IV_BYTES / 3) * 4; // 24
 const TAG_B64_LEN = Math.ceil(TAG_BYTES / 3) * 4; // 24
 // Strict base64 (standard alphabet with required padding).
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+const PLACEHOLDER_KEY_RE = /^<64-char hex/i;
 
 /** Returns true only if `value` matches our envelope layout:
- *  base64(iv16):base64(tag16):base64(ciphertext) — exact lengths enforced
+ *  base64(iv16):base64(tag16):base64(ciphertext) â€” exact lengths enforced
  *  on iv/tag so legacy plaintext containing two colons is not misparsed. */
 function looksLikeCiphertext(value: string): boolean {
   const parts = value.split(':');
@@ -43,20 +44,28 @@ function looksLikeCiphertext(value: string): boolean {
 
 function getKey(): Buffer {
   const hex = process.env.FIELD_ENCRYPTION_KEY;
-  if (!hex) {
+  const isPlaceholder = !!hex && PLACEHOLDER_KEY_RE.test(hex.trim());
+
+  if (!hex || isPlaceholder) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
         'FIELD_ENCRYPTION_KEY is required in production. ' +
         'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
       );
     }
-    // Development fallback — zero key, logged as a clear warning
-    logger.warn('[crypto] FIELD_ENCRYPTION_KEY not set — using insecure dev key. Set it before deploying.');
+    // Development fallback â€” zero key, logged as a clear warning.
+    // Treat the documented placeholder as unset so local setups keep working.
+    logger.warn('[crypto] FIELD_ENCRYPTION_KEY not set or placeholder â€” using insecure dev key. Set a real value before deploying.');
     return Buffer.alloc(32, 0);
   }
+
   const buf = Buffer.from(hex, 'hex');
   if (buf.length !== 32) {
-    throw new Error('FIELD_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).');
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('FIELD_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes).');
+    }
+    logger.warn('[crypto] FIELD_ENCRYPTION_KEY is invalid â€” using insecure dev key. Set a real value before deploying.');
+    return Buffer.alloc(32, 0);
   }
   return buf;
 }
@@ -76,16 +85,16 @@ export function encrypt(plaintext: string): string {
  *  unchanged (backwards-compatibility for pre-encryption rows). */
 export function decrypt(value: string): string {
   if (!looksLikeCiphertext(value)) {
-    // Legacy plaintext — return as-is
+    // Legacy plaintext â€” return as-is
     return value;
   }
   const [ivB64, tagB64, bodyB64] = value.split(':');
   const key = getKey();
-  const iv  = Buffer.from(ivB64,  'base64');
+  const iv = Buffer.from(ivB64, 'base64');
   const tag = Buffer.from(tagB64, 'base64');
   const body = Buffer.from(bodyB64, 'base64');
 
-  // Defensive re-check after decode — base64 regex above should guarantee this.
+  // Defensive re-check after decode â€” base64 regex above should guarantee this.
   if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
     return value;
   }

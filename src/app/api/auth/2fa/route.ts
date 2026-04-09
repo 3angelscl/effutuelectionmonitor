@@ -111,7 +111,13 @@ export async function POST(request: NextRequest) {
       }
 
       const secret = decrypt(user.twoFactorSecret);
-      const result = verifySync({ token: code, secret });
+      const result = verifySync({
+        token: code,
+        secret,
+        // Allow a small amount of clock skew so activation does not fail
+        // when the user's authenticator and the server are slightly out of sync.
+        epochTolerance: [30, 0],
+      });
 
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;
@@ -161,7 +167,11 @@ export async function POST(request: NextRequest) {
       }
 
       const secret = decrypt(user.twoFactorSecret);
-      const result = verifySync({ token: code, secret });
+      const result = verifySync({
+        token: code,
+        secret,
+        epochTolerance: [30, 0],
+      });
 
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;
@@ -188,7 +198,11 @@ export async function POST(request: NextRequest) {
       }
 
       const secret = decrypt(user.twoFactorSecret);
-      const result = verifySync({ token: code, secret });
+      const result = verifySync({
+        token: code,
+        secret,
+        epochTolerance: [30, 0],
+      });
 
       if (!result.valid) {
         const newAttempts = user.totpAttempts + 1;

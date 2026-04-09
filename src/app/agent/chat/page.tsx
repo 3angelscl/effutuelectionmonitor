@@ -1,19 +1,59 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import { useSession } from 'next-auth/react';
 import { useEventStream } from '@/hooks/useEventStream';
 import Card from '@/components/ui/Card';
-import { PaperAirplaneIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import {
+  PaperAirplaneIcon,
+  ArrowLeftIcon,
+  PaperClipIcon,
+  CameraIcon,
+} from '@heroicons/react/24/outline';
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+const IMAGE_URL_RE = /^\/uploads\/[^\s]+\.(jpg|jpeg|png|gif|webp)$/i;
+const FILE_URL_RE = /^\/uploads\/[^\s]+$/i;
+
+function MessageContent({ message, isMine }: { message: string; isMine: boolean }) {
+  const trimmed = message.trim();
+  if (IMAGE_URL_RE.test(trimmed)) {
+    return (
+      <a href={trimmed} target="_blank" rel="noopener noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={trimmed}
+          alt="Attachment"
+          className="max-w-full rounded-lg max-h-48 object-contain"
+        />
+      </a>
+    );
+  }
+  if (FILE_URL_RE.test(trimmed)) {
+    const filename = trimmed.split('/').pop() || 'attachment';
+    return (
+      <a
+        href={trimmed}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`flex items-center gap-2 underline ${isMine ? 'text-white' : 'text-primary-700'}`}
+      >
+        <PaperClipIcon className="h-4 w-4 shrink-0" />
+        <span className="text-sm break-all">{filename}</span>
+      </a>
+    );
+  }
+  return <p className="text-sm whitespace-pre-wrap break-words">{message}</p>;
+}
 
 interface Conversation {
   user: { id: string; name: string; email: string; photo: string | null; role: string };
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  isOnline: boolean;
+  isPinned: boolean;
 }
 
 interface ChatMsg {
@@ -30,13 +70,16 @@ export default function AgentChatPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: convData, mutate: mutateConvos } = useSWR<{ conversations: Conversation[] }>(
     '/api/chat',
     fetcher,
-    { refreshInterval: 60000 } // 60s fallback; SSE handles instant delivery
+    { refreshInterval: 15000 } // 15s — keeps presence (online/offline) fresh
   );
 
   const { data: msgData, mutate: mutateMessages } = useSWR<{ messages: ChatMsg[] }>(
@@ -64,6 +107,34 @@ export default function AgentChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
+  const handleFileUpload = async (file: File) => {
+    if (!selectedUserId) return;
+    setUploadingFile(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error || 'Upload failed');
+      }
+      const { url } = await uploadRes.json() as { url: string };
+      const sendRes = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ receiverId: selectedUserId, message: url }),
+      });
+      if (!sendRes.ok) throw new Error('Failed to send attachment');
+      mutateMessages();
+      mutateConvos();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +211,7 @@ export default function AgentChatPage() {
                       ? 'bg-primary-600 text-white rounded-br-sm'
                       : 'bg-white text-gray-900 rounded-bl-sm shadow-sm'
                   }`}>
-                    <p className="text-sm">{msg.message}</p>
+                    <MessageContent message={msg.message} isMine={isMine} />
                     <p className={`text-[10px] mt-1 ${isMine ? 'text-white/60' : 'text-gray-400'}`}>
                       {formatTime(msg.createdAt)}
                       {isMine && (
@@ -164,8 +235,57 @@ export default function AgentChatPage() {
             </div>
           )}
 
+          {uploadingFile && (
+            <div className="mx-4 mb-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-600 flex items-center gap-2 shrink-0">
+              <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full" />
+              Uploading…
+            </div>
+          )}
+
+          {/* Hidden file inputs */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileUpload(file);
+              e.target.value = '';
+            }}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileUpload(file);
+              e.target.value = '';
+            }}
+          />
+
           {/* Input */}
-          <form onSubmit={handleSend} className="flex gap-2 p-3 border-t border-gray-100 bg-white shrink-0">
+          <form onSubmit={handleSend} className="flex items-center gap-1.5 p-3 border-t border-gray-100 bg-white shrink-0">
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={uploadingFile || !selectedUserId}
+              className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 shrink-0"
+              title="Send photo"
+            >
+              <CameraIcon className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFile || !selectedUserId}
+              className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 shrink-0"
+              title="Attach file"
+            >
+              <PaperClipIcon className="h-5 w-5" />
+            </button>
             <input
               type="text"
               value={newMessage}
@@ -197,20 +317,31 @@ export default function AgentChatPage() {
                   onClick={() => handleSelectConversation(convo.user.id)}
                   className={`w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 ${
                     selectedUserId === convo.user.id ? 'bg-primary-50' : ''
-                  }`}
+                  } ${!convo.isOnline ? 'opacity-70' : ''}`}
                 >
-                  <div className="w-10 h-10 bg-primary-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
-                    {getInitials(convo.user.name)}
+                  <div className="relative shrink-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                      convo.isOnline
+                        ? 'bg-primary-700 ring-2 ring-green-400 shadow-[0_0_12px_rgba(74,222,128,0.7)]'
+                        : 'bg-gray-400'
+                    }`}>
+                      {getInitials(convo.user.name)}
+                    </div>
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                      convo.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                    }`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="font-semibold text-gray-900 text-sm">{convo.user.name}</p>
+                      <p className={`font-semibold text-sm ${convo.isOnline ? 'text-gray-900' : 'text-gray-500'}`}>{convo.user.name}</p>
                       {convo.lastMessageAt && new Date(convo.lastMessageAt).getTime() > 0 && (
                         <span className="text-[10px] text-gray-400">{formatTime(convo.lastMessageAt)}</span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 truncate">{convo.lastMessage || 'No messages yet'}</p>
-                    <span className="text-[10px] text-gray-400 uppercase">{convo.user.role}</span>
+                    <p className="text-xs text-gray-500 truncate">{convo.lastMessage || 'Tap to start a conversation'}</p>
+                    <span className="text-[10px] text-gray-400 uppercase">
+                      {convo.user.role} {convo.isOnline ? '• Online' : '• Offline'}
+                    </span>
                   </div>
                   {convo.unreadCount > 0 && (
                     <span className="w-5 h-5 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
@@ -241,7 +372,7 @@ export default function AgentChatPage() {
                         ? 'bg-primary-600 text-white rounded-br-sm'
                         : 'bg-gray-100 text-gray-900 rounded-bl-sm'
                     }`}>
-                      <p className="text-sm">{msg.message}</p>
+                      <MessageContent message={msg.message} isMine={isMine} />
                       <p className={`text-[10px] mt-1 ${isMine ? 'text-white/60' : 'text-gray-400'}`}>
                         {formatTime(msg.createdAt)}
                         {isMine && (
@@ -262,7 +393,31 @@ export default function AgentChatPage() {
                 <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600 ml-2">&times;</button>
               </div>
             )}
-            <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex gap-3">
+            {uploadingFile && (
+              <div className="mx-4 mt-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-blue-600 flex items-center gap-2">
+                <span className="animate-spin inline-block w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full" />
+                Uploading…
+              </div>
+            )}
+            <form onSubmit={handleSend} className="p-4 border-t border-gray-100 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingFile || !selectedUserId}
+                className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 shrink-0"
+                title="Send photo"
+              >
+                <CameraIcon className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile || !selectedUserId}
+                className="p-2 text-gray-400 hover:text-gray-600 disabled:opacity-40 shrink-0"
+                title="Attach file"
+              >
+                <PaperClipIcon className="h-5 w-5" />
+              </button>
               <input
                 type="text"
                 value={newMessage}
@@ -300,20 +455,31 @@ export default function AgentChatPage() {
               <button
                 key={convo.user.id}
                 onClick={() => handleSelectConversation(convo.user.id)}
-                className="w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 active:bg-gray-100"
+                className={`w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 border-b border-gray-50 active:bg-gray-100 ${!convo.isOnline ? 'opacity-70' : ''}`}
               >
-                <div className="w-10 h-10 bg-primary-700 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0">
-                  {getInitials(convo.user.name)}
+                <div className="relative shrink-0">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold ${
+                    convo.isOnline
+                      ? 'bg-primary-700 ring-2 ring-green-400 shadow-[0_0_12px_rgba(74,222,128,0.7)]'
+                      : 'bg-gray-400'
+                  }`}>
+                    {getInitials(convo.user.name)}
+                  </div>
+                  <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                    convo.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                  }`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-gray-900 text-sm">{convo.user.name}</p>
+                    <p className={`font-semibold text-sm ${convo.isOnline ? 'text-gray-900' : 'text-gray-500'}`}>{convo.user.name}</p>
                     {convo.lastMessageAt && new Date(convo.lastMessageAt).getTime() > 0 && (
                       <span className="text-[10px] text-gray-400">{formatTime(convo.lastMessageAt)}</span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 truncate">{convo.lastMessage || 'No messages yet'}</p>
-                  <span className="text-[10px] text-gray-400 uppercase">{convo.user.role}</span>
+                  <p className="text-xs text-gray-500 truncate">{convo.lastMessage || 'Tap to start a conversation'}</p>
+                  <span className="text-[10px] text-gray-400 uppercase">
+                    {convo.user.role} {convo.isOnline ? '• Online' : '• Offline'}
+                  </span>
                 </div>
                 {convo.unreadCount > 0 && (
                   <span className="w-5 h-5 bg-primary-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">

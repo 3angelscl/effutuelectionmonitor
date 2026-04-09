@@ -6,7 +6,7 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import CandidateComparisonStack from '@/components/ui/CandidateComparisonStack';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   ArrowPathIcon,
   SignalIcon,
@@ -15,8 +15,6 @@ import {
 import { DashboardStats } from '@/types';
 
 const TurnoutHeatmap = lazy(() => import('@/components/ui/TurnoutHeatmap'));
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 export default function AgentViewerPage() {
   const { data: stats, isLoading, mutate } = useSWR<DashboardStats>('/api/stats', fetcher, {

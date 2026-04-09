@@ -16,14 +16,7 @@ import {
   cancelAutoCheckout,
   checkoutStaleAgentsOnStartup,
 } from '@/lib/auto-checkout';
-
-// Track active SSE connections per user so multiple open tabs don't trigger
-// auto-checkout while any tab is still connected.
-const gConn = globalThis as unknown as {
-  agentSseConnections: Map<string, number> | undefined;
-};
-if (!gConn.agentSseConnections) gConn.agentSseConnections = new Map();
-const agentSseConnections = gConn.agentSseConnections;
+import { addConnection, removeConnection } from '@/lib/presence';
 
 // Run startup cleanup once — handles stale CHECK_INs from previous server restarts
 checkoutStaleAgentsOnStartup();
@@ -42,10 +35,10 @@ export async function GET() {
   const user = session.user as { id: string; role: string };
   const encoder = new TextEncoder();
 
-  // Track this connection; cancel any pending auto-checkout for this agent
+  // Track this connection (for presence). For agents, also cancel any pending
+  // auto-checkout since a live SSE connection means the agent is present.
+  addConnection(user.id);
   if (user.role === 'AGENT') {
-    const count = (agentSseConnections.get(user.id) ?? 0) + 1;
-    agentSseConnections.set(user.id, count);
     cancelAutoCheckout(user.id);
   }
 
@@ -108,15 +101,11 @@ export async function GET() {
         clearInterval(checkAlive);
         unsubscribe();
 
-        // Decrement connection count; schedule auto-checkout when the last tab closes
-        if (user.role === 'AGENT') {
-          const remaining = Math.max(0, (agentSseConnections.get(user.id) ?? 1) - 1);
-          if (remaining === 0) {
-            agentSseConnections.delete(user.id);
-            scheduleAutoCheckout(user.id);
-          } else {
-            agentSseConnections.set(user.id, remaining);
-          }
+        // Decrement connection count; schedule auto-checkout (agents only)
+        // when the last tab closes.
+        const remaining = removeConnection(user.id);
+        if (remaining === 0 && user.role === 'AGENT') {
+          scheduleAutoCheckout(user.id);
         }
       };
 

@@ -37,6 +37,7 @@ export interface CandidateResult {
   party: string;
   partyFull: string | null;
   color: string;
+  photo: string | null;
   totalVotes: number;
   percentage: number;
 }

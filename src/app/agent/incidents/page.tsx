@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Station {
   id: string;
@@ -76,7 +75,7 @@ export default function AgentIncidentsPage() {
   const userId = (session?.user as { id?: string })?.id;
 
   const { data: stations } = useSWR<Station[]>('/api/stations', fetcher);
-  const station = (stations || []).find((s) => s.agentId === userId);
+  const station = (Array.isArray(stations) ? stations : []).find((s) => s.agentId === userId);
 
   const { data: incidentData, mutate } = useSWR<IncidentResponse>(
     '/api/incidents?limit=50',

@@ -83,8 +83,8 @@ const navigation: NavEntry[] = [
     icon: SignalIcon,
     roles: ['ADMIN', 'OFFICER'],
     children: [
-      { name: 'Polling Stations', href: '/admin/stations', icon: MapPinIcon, roles: ['ADMIN', 'OFFICER'] },
       { name: 'Electoral Areas', href: '/admin/electoral-areas', icon: MapPinIcon, roles: ['ADMIN', 'OFFICER'] },
+      { name: 'Polling Stations', href: '/admin/stations', icon: MapPinIcon, roles: ['ADMIN', 'OFFICER'] },
       { name: 'Incidents', href: '/admin/incidents', icon: ExclamationTriangleIcon, roles: ['ADMIN', 'OFFICER'] },
     ],
   },

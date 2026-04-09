@@ -14,6 +14,7 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { toast } from 'sonner';
+import Drawer from '@/components/ui/Drawer';
 import {
   MagnifyingGlassIcon,
   ArrowUpTrayIcon,
@@ -53,6 +54,30 @@ interface VoterPage {
   summary: VoterSummary;
 }
 
+interface UploadPreviewRow {
+  rowNum: number;
+  voterId: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  gender: 'Male' | 'Female' | null;
+  psCode: string;
+  photo: string | null;
+  stationName: string | null;
+  status: 'valid' | 'error';
+  errors: string[];
+}
+
+interface UploadPreviewResult {
+  fileName: string;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  canImport: boolean;
+  rows: UploadPreviewRow[];
+  errors: string[];
+}
+
 export default function VoterManagement() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -70,12 +95,17 @@ export default function VoterManagement() {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<UploadPreviewResult | null>(null);
+  const [uploadPreviewing, setUploadPreviewing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<{
     successCount: number;
     errorCount: number;
     errors: string[];
   } | null>(null);
+  const [uploadError, setUploadError] = useState('');
 
   // Add Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -89,6 +119,7 @@ export default function VoterManagement() {
   const [editForm, setEditForm] = useState({
     voterId: '', firstName: '', lastName: '', age: '', gender: '', photo: '',
   });
+  const [selectedVoter, setSelectedVoter] = useState<VoterData | null>(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -183,34 +214,131 @@ export default function VoterManagement() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
-  const handleUpload = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    setUploading(true);
+  const resetUploadState = useCallback(() => {
+    setUploadFile(null);
+    setUploadPreview(null);
+    setUploadResult(null);
+    setUploadError('');
+    setUploadPreviewing(false);
+    setUploading(false);
+    if (uploadInputRef.current) uploadInputRef.current.value = '';
+  }, []);
+
+  const closeUploadModal = useCallback(() => {
+    setUploadModalOpen(false);
+    resetUploadState();
+  }, [resetUploadState]);
+
+  const openUploadModal = useCallback(() => {
+    resetUploadState();
+    setUploadModalOpen(true);
+  }, [resetUploadState]);
+
+  const handleUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setUploadFile(file);
+    setUploadPreview(null);
+    setUploadResult(null);
+    setUploadError('');
+  };
+
+  const handlePreviewUpload = async () => {
+    if (!uploadFile) {
+      setUploadError('Please choose a file first.');
+      return;
+    }
+
+    setUploadPreviewing(true);
+    setUploadError('');
     setUploadResult(null);
 
     try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+
+      const res = await fetch('/api/voters/upload?preview=true', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        setUploadPreview(result.rows ? {
+          fileName: result.fileName || uploadFile.name,
+          totalRows: result.totalRows || 0,
+          validRows: result.validRows || 0,
+          invalidRows: result.invalidRows || 0,
+          canImport: false,
+          rows: Array.isArray(result.rows) ? result.rows : [],
+          errors: Array.isArray(result.errors) ? result.errors : [result.error || 'Preview failed'],
+        } : null);
+        setUploadError(result.error || 'Preview failed');
+        return;
+      }
+
+      setUploadPreview({
+        fileName: result.fileName || uploadFile.name,
+        totalRows: result.totalRows || 0,
+        validRows: result.validRows || 0,
+        invalidRows: result.invalidRows || 0,
+        canImport: Boolean(result.canImport),
+        rows: Array.isArray(result.rows) ? result.rows : [],
+        errors: Array.isArray(result.errors) ? result.errors : [],
+      });
+    } catch {
+      setUploadError('An unexpected error occurred during preview.');
+    } finally {
+      setUploadPreviewing(false);
+    }
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!uploadFile) {
+      setUploadError('Please choose a file first.');
+      return;
+    }
+    if (!uploadPreview?.canImport) {
+      setUploadError('Please resolve the validation errors before uploading.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+    setUploadError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+
       const res = await fetch('/api/voters/upload', {
         method: 'POST',
         body: formData,
       });
       const result = await res.json();
-      
+
       if (!res.ok) {
-        setUploadResult({
-          successCount: 0,
-          errorCount: 1,
-          errors: [result.error || 'Upload failed'],
-        });
+        if (res.status === 422 && Array.isArray(result.rows)) {
+          setUploadPreview({
+            fileName: result.fileName || uploadFile.name,
+            totalRows: result.totalRows || 0,
+            validRows: result.validRows || 0,
+            invalidRows: result.invalidRows || 0,
+            canImport: false,
+            rows: result.rows,
+            errors: Array.isArray(result.errors) ? result.errors : [result.error || 'Validation failed'],
+          });
+        }
+        setUploadError(result.error || 'Upload failed');
         return;
       }
-      
+
       setUploadResult({
         successCount: result.successCount || 0,
         errorCount: result.errorCount || 0,
         errors: Array.isArray(result.errors) ? result.errors : [],
       });
       mutate();
+      toast.success('Voter register imported successfully');
     } catch {
       setUploadResult({ successCount: 0, errorCount: 1, errors: ['An unexpected error occurred during upload.'] });
     } finally {
@@ -231,6 +359,27 @@ export default function VoterManagement() {
     });
     setError('');
     setEditModalOpen(true);
+  };
+
+  const openVoterDrawer = (voter: VoterData) => {
+    setSelectedVoter(voter);
+  };
+
+  const closeVoterDrawer = () => {
+    setSelectedVoter(null);
+  };
+
+  const openDrawerEdit = () => {
+    if (!selectedVoter) return;
+    const voter = selectedVoter;
+    closeVoterDrawer();
+    openEditModal(voter);
+  };
+
+  const openDrawerDelete = () => {
+    if (!selectedVoter) return;
+    setDeleteTarget(selectedVoter.id);
+    closeVoterDrawer();
   };
 
   const handlePhotoUpload = async (file: File, isAdd: boolean = false) => {
@@ -427,8 +576,8 @@ export default function VoterManagement() {
   const ageBands = summary?.ageBands || [];
   const genderCounts = summary?.genderCounts || { male: 0, female: 0, unknown: 0 };
   const genderKnownTotal = genderCounts.male + genderCounts.female;
-  const malePct = genderKnownTotal > 0 ? Math.round((genderCounts.male / genderKnownTotal) * 100) : 0;
-  const femalePct = genderKnownTotal > 0 ? 100 - malePct : 0;
+  const malePct = genderKnownTotal > 0 ? (genderCounts.male / genderKnownTotal) * 100 : 0;
+  const femalePct = genderKnownTotal > 0 ? (genderCounts.female / genderKnownTotal) * 100 : 0;
   const agePeak = Math.max(1, ...ageBands.map((band) => band.count));
   const ageBarColors = ['bg-emerald-500', 'bg-sky-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500'];
 
@@ -518,10 +667,7 @@ export default function VoterManagement() {
               <Button
                 variant="outline"
                 icon={<ArrowUpTrayIcon className="h-4 w-4" />}
-                onClick={() => {
-                  setUploadResult(null);
-                  setUploadModalOpen(true);
-                }}
+                onClick={openUploadModal}
               >
                 Upload
               </Button>
@@ -566,7 +712,7 @@ export default function VoterManagement() {
                   return (
                     <div key={band.label} className="grid grid-cols-[72px_1fr_56px] items-center gap-3">
                       <span className="text-xs font-medium text-gray-500">{band.label}</span>
-                      <div className="h-3 rounded-full bg-gray-200 overflow-hidden">
+                      <div className="h-4 rounded-full bg-gray-200 overflow-hidden">
                         <div
                           className={`h-full rounded-full ${colorClass}`}
                           style={{ width }}
@@ -598,7 +744,7 @@ export default function VoterManagement() {
                 className="relative h-48 w-48 rounded-full"
                 style={{
                   background: genderKnownTotal > 0
-                    ? `conic-gradient(#16a34a 0 ${malePct}%, #e5e7eb ${malePct}% ${malePct + femalePct}%)`
+                    ? `conic-gradient(#2563eb 0 ${malePct}%, #f43f5e ${malePct}% ${malePct + femalePct}%)`
                     : 'conic-gradient(#e5e7eb 0 100%)',
                 }}
               >
@@ -608,19 +754,19 @@ export default function VoterManagement() {
                 </div>
               </div>
               <div className="grid w-full grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-emerald-900">Male</span>
-                    <span className="text-xs font-semibold text-emerald-700">{malePct}%</span>
+                    <span className="font-medium text-blue-900">Male</span>
+                    <span className="text-xs font-semibold text-blue-700">{malePct.toFixed(2)}%</span>
                   </div>
-                  <p className="mt-1 text-lg font-semibold text-emerald-950">{genderCounts.male.toLocaleString()}</p>
+                  <p className="mt-1 text-lg font-semibold text-blue-950">{genderCounts.male.toLocaleString()}</p>
                 </div>
-                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-700">Female</span>
-                    <span className="text-xs font-semibold text-gray-500">{femalePct}%</span>
+                    <span className="font-medium text-rose-900">Female</span>
+                    <span className="text-xs font-semibold text-rose-700">{femalePct.toFixed(2)}%</span>
                   </div>
-                  <p className="mt-1 text-lg font-semibold text-gray-900">{genderCounts.female.toLocaleString()}</p>
+                  <p className="mt-1 text-lg font-semibold text-rose-950">{genderCounts.female.toLocaleString()}</p>
                 </div>
               </div>
               {genderCounts.unknown > 0 && (
@@ -649,7 +795,19 @@ export default function VoterManagement() {
               </thead>
               <tbody>
                 {allVoters.map((voter) => (
-                  <tr key={voter.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr
+                    key={voter.id}
+                    className="border-b border-gray-50 cursor-pointer transition-colors hover:bg-gray-50 focus-within:bg-gray-50"
+                    onClick={() => openVoterDrawer(voter)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openVoterDrawer(voter);
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-label={`View details for ${voter.firstName} ${voter.lastName}`}
+                  >
                     <td className="py-3 px-6">
                       <div className="flex items-center gap-3">
                         {voter.photo ? (
@@ -695,14 +853,20 @@ export default function VoterManagement() {
                       <td className="py-3 px-6 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => openEditModal(voter)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(voter);
+                            }}
                             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                             title="Edit voter"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setDeleteTarget(voter.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget(voter.id);
+                            }}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Delete voter"
                           >
@@ -745,6 +909,118 @@ export default function VoterManagement() {
           )}
         </Card>
       </div>
+
+      <Drawer
+        isOpen={!!selectedVoter}
+        onClose={closeVoterDrawer}
+        title="Voter Details"
+        size="lg"
+      >
+        {selectedVoter && (
+          <div className="p-6 space-y-6">
+            <div className="flex items-start gap-4">
+              {selectedVoter.photo ? (
+                <img
+                  src={selectedVoter.photo}
+                  alt={`${selectedVoter.firstName} ${selectedVoter.lastName}`}
+                  className="w-20 h-20 rounded-2xl object-cover border border-gray-200 shadow-sm"
+                />
+              ) : (
+                <div className={`w-20 h-20 ${getAvatarColor(selectedVoter.firstName + selectedVoter.lastName)} rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-sm`}>
+                  {getInitials(selectedVoter.firstName, selectedVoter.lastName)}
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <p className="text-2xl font-semibold text-gray-900 truncate">
+                  {selectedVoter.firstName} {selectedVoter.lastName}
+                </p>
+                <p className="text-sm text-gray-500 font-mono">{selectedVoter.voterId}</p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant={selectedVoter.hasVoted ? 'success' : 'neutral'} size="sm">
+                    {selectedVoter.hasVoted ? 'Voted' : 'Not Voted'}
+                  </Badge>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    selectedVoter.gender === 'Male'
+                      ? 'bg-blue-50 text-blue-700'
+                      : selectedVoter.gender === 'Female'
+                        ? 'bg-rose-50 text-rose-700'
+                        : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {selectedVoter.gender || 'Unknown'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Age</p>
+                <p className="mt-2 text-2xl font-semibold text-gray-900">{selectedVoter.age}</p>
+              </div>
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Gender</p>
+                <p className="mt-2 text-2xl font-semibold text-gray-900">{selectedVoter.gender || 'Unknown'}</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Polling Station</p>
+                <p className="mt-1 text-base font-semibold text-gray-900">{selectedVoter.pollingStation.name}</p>
+                <p className="text-sm text-gray-500 font-mono">{selectedVoter.psCode}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Electoral Area</p>
+                <p className="mt-1 text-sm text-gray-900">{selectedVoter.pollingStation.electoralArea || 'Unassigned'}</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">Photo</p>
+              {selectedVoter.photo ? (
+                <a
+                  href={selectedVoter.photo}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex text-sm font-medium text-primary-600 hover:text-primary-700"
+                >
+                  Open voter photo
+                </a>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">No photo has been uploaded for this voter yet.</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              {canModify && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={openDrawerEdit}
+                  >
+                    Edit Voter
+                  </Button>
+                  <Button
+                    variant="danger"
+                    className="flex-1"
+                    onClick={openDrawerDelete}
+                  >
+                    Delete Voter
+                  </Button>
+                </>
+              )}
+              {!canModify && (
+                <Button variant="secondary" className="flex-1" onClick={closeVoterDrawer}>
+                  Close
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       {/* Add Voter Modal */}
       <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Register Individual Voter">
@@ -878,20 +1154,26 @@ export default function VoterManagement() {
         </form>
       </Modal>
 
-      {/* Upload Modal */}
+            {/* Upload Modal */}
       <Modal
         isOpen={uploadModalOpen}
-        onClose={() => setUploadModalOpen(false)}
+        onClose={closeUploadModal}
         title="Upload Voter Register"
-        size="md"
+        size="xl"
       >
-        <form onSubmit={handleUpload} className="space-y-4">
-          {/* Format guide + template download */}
+        <div className="space-y-4">
+          {uploadError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {uploadError}
+            </div>
+          )}
+
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
             <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">CSV columns</p>
             <code className="block text-xs text-blue-700">voter_id, first_name, last_name, age, gender, ps_code, photo_url (optional)</code>
             <p className="text-[11px] text-blue-700">
               `gender` must be Male or Female. `photo_url` can be a Cloudinary URL or any public image URL. Leave it blank if the voter has no photo yet.
+              Preview the file first to catch row-level errors before importing.
             </p>
             <button
               type="button"
@@ -912,37 +1194,165 @@ export default function VoterManagement() {
             </button>
           </div>
 
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-500 transition-colors">
+          <div className="rounded-lg border-2 border-dashed border-gray-300 p-6 text-center hover:border-primary-500 transition-colors">
             <ArrowUpTrayIcon className="h-8 w-8 text-gray-400 mx-auto mb-3" />
             <input
               type="file"
               name="file"
               accept=".csv,.xlsx,.xls"
               required
+              ref={uploadInputRef}
               className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-primary-50 file:text-primary-700 file:font-medium hover:file:bg-primary-100"
+              onChange={handleUploadFileChange}
             />
-            <p className="text-xs text-gray-500 mt-2">CSV or Excel (.xlsx) accepted · max 5 MB</p>
+            <p className="text-xs text-gray-500 mt-2">CSV or Excel (.xlsx/.xls) accepted · max 10 MB</p>
+            {uploadFile && (
+              <p className="mt-2 text-xs font-medium text-gray-700">
+                Selected file: <span className="text-gray-900">{uploadFile.name}</span>
+              </p>
+            )}
           </div>
 
-          {/* Upload progress bar */}
-          {uploading && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>Processing upload...</span>
-                <span className="animate-pulse">Please wait</span>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handlePreviewUpload}
+              loading={uploadPreviewing}
+              disabled={!uploadFile || uploading}
+            >
+              Preview & Validate
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmUpload}
+              loading={uploading}
+              disabled={!uploadFile || !uploadPreview?.canImport || uploadPreviewing}
+            >
+              Import Voters
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={closeUploadModal}
+              disabled={uploadPreviewing || uploading}
+            >
+              {uploadResult ? 'Close' : 'Cancel'}
+            </Button>
+          </div>
+
+          {uploadPreview && (
+            <div className="space-y-4">
+              <div className={`grid gap-3 md:grid-cols-4 rounded-lg border p-4 ${
+                uploadPreview.invalidRows > 0 ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'
+              }`}>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">File</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{uploadPreview.fileName}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Total rows</p>
+                  <p className="text-sm font-semibold text-gray-900">{uploadPreview.totalRows.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Valid rows</p>
+                  <p className="text-sm font-semibold text-green-700">{uploadPreview.validRows.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Invalid rows</p>
+                  <p className="text-sm font-semibold text-amber-700">{uploadPreview.invalidRows.toLocaleString()}</p>
+                </div>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full bg-primary-500 rounded-full animate-pulse w-3/4" />
+
+              {!uploadPreview.canImport && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Fix the validation errors below before importing. The upload is blocked until the preview is clean.
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Row</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Voter</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Station</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Gender</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Photo</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uploadPreview.rows.map((row) => (
+                      <tr key={row.rowNum} className="border-b border-gray-100 last:border-b-0 align-top">
+                        <td className="px-4 py-3 text-gray-500">{row.rowNum}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-gray-900">{row.firstName} {row.lastName}</p>
+                          <p className="text-xs text-gray-500 font-mono">{row.voterId}</p>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          <p>{row.stationName || row.psCode}</p>
+                          <p className="text-xs text-gray-500 font-mono">{row.psCode}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            row.gender === 'Male'
+                              ? 'bg-blue-50 text-blue-700'
+                              : row.gender === 'Female'
+                                ? 'bg-rose-50 text-rose-700'
+                                : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {row.gender || 'Unknown'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{row.photo ? 'Provided' : 'Not provided'}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={row.status === 'valid' ? 'success' : 'neutral'} size="sm">
+                            {row.status === 'valid' ? 'Valid' : 'Needs fix'}
+                          </Badge>
+                          {row.errors.length > 0 && (
+                            <p className="mt-1 text-xs text-red-600">{row.errors.join('; ')}</p>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+
+              {uploadPreview.totalRows > uploadPreview.rows.length && (
+                <p className="text-xs text-gray-500">
+                  Showing the first {uploadPreview.rows.length} rows of {uploadPreview.totalRows.toLocaleString()}.
+                </p>
+              )}
+
+              {Array.isArray(uploadPreview.errors) && uploadPreview.errors.length > 0 && (
+                <details className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs">
+                  <summary className="cursor-pointer font-medium text-red-700">
+                    View validation errors ({uploadPreview.errors.length})
+                  </summary>
+                  <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto text-red-700">
+                    {uploadPreview.errors.map((err, i) => (
+                      <li key={i}>• {err}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
 
           {uploadResult && (
-            <div className={`rounded-lg border p-4 space-y-2 ${uploadResult.errorCount > 0 && uploadResult.successCount === 0 ? 'bg-red-50 border-red-200' : uploadResult.errorCount > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+            <div className={`rounded-lg border p-4 space-y-2 ${
+              uploadResult.errorCount > 0 && uploadResult.successCount === 0
+                ? 'bg-red-50 border-red-200'
+                : uploadResult.errorCount > 0
+                  ? 'bg-yellow-50 border-yellow-200'
+                  : 'bg-green-50 border-green-200'
+            }`}>
               <div className="flex items-center gap-2">
                 {uploadResult.successCount > 0 && (
                   <span className="inline-flex items-center gap-1 text-sm font-semibold text-green-700">
-                    ✓ {uploadResult.successCount} voters imported
+                    ? {uploadResult.successCount} voters imported
                   </span>
                 )}
                 {uploadResult.errorCount > 0 && (
@@ -966,20 +1376,8 @@ export default function VoterManagement() {
               )}
             </div>
           )}
-
-          <div className="flex gap-3 justify-end">
-            <Button variant="secondary" type="button" onClick={() => setUploadModalOpen(false)}>
-              {uploadResult ? 'Close' : 'Cancel'}
-            </Button>
-            {!uploadResult && (
-              <Button type="submit" loading={uploading}>
-                Upload
-              </Button>
-            )}
-          </div>
-        </form>
+        </div>
       </Modal>
-
       {/* Edit Voter Modal */}
       <Modal isOpen={editModalOpen} onClose={() => setEditModalOpen(false)} title="Edit Voter">
         <form onSubmit={handleEdit} className="space-y-4">
@@ -990,7 +1388,7 @@ export default function VoterManagement() {
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-xs text-gray-500">
                 Station: {editVoter.pollingStation.psCode} - {editVoter.pollingStation.name}
-                {editVoter.pollingStation.electoralArea ? ` · ${editVoter.pollingStation.electoralArea}` : ''}
+                {editVoter.pollingStation.electoralArea ? ` Â· ${editVoter.pollingStation.electoralArea}` : ''}
               </p>
             </div>
           )}
@@ -1177,3 +1575,4 @@ export default function VoterManagement() {
     </div>
   );
 }
+

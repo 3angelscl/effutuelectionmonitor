@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -32,6 +32,30 @@ export default function AgentSettingsPage() {
   const [twoFAMsg, setTwoFAMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [settingUp2FA, setSettingUp2FA] = useState(false);
 
+  const loadTwoFAStatus = useCallback(async () => {
+    const res = await fetch('/api/auth/2fa');
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to load 2FA status');
+    }
+
+    if (data.enabled) {
+      setTwoFAEnabled(true);
+      setSettingUp2FA(false);
+      setQrCode('');
+      setSecret('');
+      return;
+    }
+
+    if (data.qrCode && data.secret) {
+      setTwoFAEnabled(false);
+      setSettingUp2FA(true);
+      setQrCode(data.qrCode);
+      setSecret(data.secret);
+    }
+  }, []);
+
   useEffect(() => {
     // Fetch full profile from API to get stored phone number.
     // Session only carries name/email/photo — phone is not included.
@@ -48,13 +72,8 @@ export default function AgentSettingsPage() {
         }
       });
     // Load 2FA status
-    fetch('/api/auth/2fa')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.enabled) setTwoFAEnabled(true);
-      })
-      .catch(() => {});
-  }, [session]);
+    loadTwoFAStatus().catch(() => {});
+  }, [session, loadTwoFAStatus]);
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,16 +130,11 @@ export default function AgentSettingsPage() {
 
   const setup2FA = async () => {
     setSettingUp2FA(true);
+    setTwoFAMsg(null);
     try {
-      const res = await fetch('/api/auth/2fa');
-      const data = await res.json();
-      if (data.enabled) {
-        setTwoFAEnabled(true);
-      } else {
-        setQrCode(data.qrCode);
-        setSecret(data.secret);
-      }
+      await loadTwoFAStatus();
     } catch {
+      setSettingUp2FA(false);
       setTwoFAMsg({ type: 'error', text: 'Failed to setup 2FA' });
     }
   };
@@ -133,8 +147,8 @@ export default function AgentSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'enable', code: totpCode }),
       });
-      const data = await res.json();
-      if (data.enabled) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.enabled) {
         setTwoFAEnabled(true);
         setQrCode('');
         setSecret('');
@@ -157,8 +171,8 @@ export default function AgentSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'disable', code: totpCode }),
       });
-      const data = await res.json();
-      if (data.enabled === false) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.enabled === false) {
         setTwoFAEnabled(false);
         setTotpCode('');
         setTwoFAMsg({ type: 'success', text: '2FA disabled' });

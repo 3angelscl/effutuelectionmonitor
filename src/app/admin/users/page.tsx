@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -11,8 +12,6 @@ import Modal from '@/components/ui/Modal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface UserData {
   id: string;

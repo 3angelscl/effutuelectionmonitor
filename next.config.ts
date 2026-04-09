@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
 
+  experimental: {
+    // Disable Turbopack filesystem cache during development so code changes
+    // are always reflected immediately without stale SSR bundles.
+    turbopackFileSystemCacheForDev: false,
+  },
+
   // Security headers
   async headers() {
     return [

@@ -3,6 +3,7 @@ import prisma from '@/lib/prisma';
 import { requireAuth, requireRole, apiHandler } from '@/lib/api-auth';
 import { parseBody, resultSubmitSchema } from '@/lib/validations';
 import { submitResults } from '@/services/election-results';
+import { sendResultsSubmittedEmail } from '@/lib/email';
 
 export const GET = apiHandler(async (request: Request) => {
   await requireAuth();
@@ -36,13 +37,32 @@ export const POST = apiHandler(async (request: Request) => {
   const { user } = await requireRole(['ADMIN', 'AGENT']);
   const data = await parseBody(request, resultSubmitSchema);
 
-  await submitResults({
+  const outcome = await submitResults({
     stationId: data.stationId,
     results: data.results,
     resultType: data.resultType,
     adminOverride: data.adminOverride,
     user,
   });
+
+  // Fire-and-forget email to all ADMIN users (never blocks the HTTP response)
+  Promise.all([
+    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } }),
+    prisma.pollingStation.findUnique({ where: { id: data.stationId }, select: { name: true } }),
+    prisma.election.findUnique({ where: { id: outcome.electionId }, select: { name: true } }),
+  ]).then(([admins, station, election]) => {
+    const emails = admins.map((a) => a.email).filter(Boolean);
+    if (emails.length === 0) return;
+    sendResultsSubmittedEmail({
+      adminEmail: emails,
+      agentName: user.name,
+      stationCode: outcome.stationCode,
+      stationName: station?.name ?? outcome.stationCode,
+      resultType: data.resultType,
+      totalVotes: outcome.totalVotes,
+      electionName: election?.name ?? outcome.electionId,
+    }).catch(() => {});
+  }).catch(() => {});
 
   return NextResponse.json({ success: true });
 });

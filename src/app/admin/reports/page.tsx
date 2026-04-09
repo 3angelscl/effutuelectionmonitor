@@ -1,20 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import {
   ArrowDownTrayIcon,
-  UserGroupIcon,
   ChartBarIcon,
+  CheckCircleIcon,
   ClipboardDocumentListIcon,
   DocumentTextIcon,
   FunnelIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Election {
   id: string;
@@ -31,15 +31,33 @@ interface Candidate {
   party: string;
 }
 
+interface ExportCardConfig {
+  key: string;
+  title: string;
+  description: string;
+  helperText: string;
+  badge: string;
+  icon: typeof UserGroupIcon;
+  iconClasses: string;
+  formats: readonly ('csv' | 'xlsx')[];
+  actionLabel: string;
+  onDownload: (format: 'csv' | 'xlsx') => void;
+}
+
+interface PdfCardConfig {
+  type: 'summary' | 'turnout' | 'results';
+  title: string;
+  description: string;
+}
+
 export default function ReportsPage() {
-  const { data: elections } = useSWR<Election[]>('/api/elections', fetcher);
+  const { data: elections, isLoading: electionsLoading } = useSWR<Election[]>('/api/elections', fetcher);
 
   const [selectedElectionId, setSelectedElectionId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
 
-  // Auto-select active election as default
   useEffect(() => {
     if (elections && !selectedElectionId) {
       const active = elections.find((e) => e.isActive);
@@ -47,309 +65,393 @@ export default function ReportsPage() {
     }
   }, [elections, selectedElectionId]);
 
-  // Fetch candidates for selected election
-  const { data: candidates } = useSWR<Candidate[]>(
+  const { data: candidates, isLoading: candidatesLoading } = useSWR<Candidate[]>(
     selectedElectionId ? `/api/candidates?electionId=${selectedElectionId}` : null,
     fetcher
   );
 
-  // Reset candidate when election changes
   useEffect(() => {
     setSelectedCandidateId('');
   }, [selectedElectionId]);
 
-  // ── URL builders ──
-  const buildVoterUrl = (format: string) => {
-    const p = new URLSearchParams({ format });
-    if (selectedElectionId) p.set('electionId', selectedElectionId);
-    if (dateFrom) p.set('dateFrom', dateFrom);
-    if (dateTo) p.set('dateTo', dateTo);
-    return `/api/voters/export?${p}`;
+  const selectedElection = elections?.find((e) => e.id === selectedElectionId);
+  const selectedCandidate = candidates?.find((c) => c.id === selectedCandidateId);
+  const activeFilterCount = [Boolean(selectedElectionId), Boolean(dateFrom), Boolean(dateTo), Boolean(selectedCandidateId)]
+    .filter(Boolean)
+    .length;
+
+  const buildVoterUrl = (format: 'csv' | 'xlsx') => {
+    const params = new URLSearchParams({ format });
+    if (selectedElectionId) params.set('electionId', selectedElectionId);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    return `/api/voters/export?${params.toString()}`;
   };
 
-  const buildResultsUrl = (format: string) => {
-    const p = new URLSearchParams({ format });
-    if (selectedElectionId) p.set('electionId', selectedElectionId);
-    if (selectedCandidateId) p.set('candidateId', selectedCandidateId);
-    return `/api/results/export?${p}`;
+  const buildTurnoutUrl = (format: 'csv' | 'xlsx') => {
+    const params = new URLSearchParams({ format });
+    if (selectedElectionId) params.set('electionId', selectedElectionId);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    return `/api/turnout/export?${params.toString()}`;
+  };
+
+  const buildResultsUrl = (format: 'csv' | 'xlsx') => {
+    const params = new URLSearchParams({ format });
+    if (selectedElectionId) params.set('electionId', selectedElectionId);
+    if (selectedCandidateId) params.set('candidateId', selectedCandidateId);
+    return `/api/results/export?${params.toString()}`;
   };
 
   const buildPdfUrl = (type: string) => {
-    const p = new URLSearchParams({ type });
-    if (selectedElectionId) p.set('electionId', selectedElectionId);
-    return `/api/reports/pdf?${p}`;
+    const params = new URLSearchParams({ type });
+    if (selectedElectionId) params.set('electionId', selectedElectionId);
+    return `/api/reports/pdf?${params.toString()}`;
   };
 
-  const selectedElection = elections?.find((e) => e.id === selectedElectionId);
+  const openExport = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const clearFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    setSelectedCandidateId('');
+  };
+
+  const exportCards = useMemo<ExportCardConfig[]>(
+    () => [
+      {
+        key: 'voters',
+        title: 'Voter Register',
+        description: 'All registered voters, polling station details, and vote status.',
+        helperText:
+          dateFrom || dateTo
+            ? `Includes voters marked within ${dateFrom || 'the beginning'} to ${dateTo || 'now'}.`
+            : 'Exports the full voter register for the selected election scope.',
+        badge: 'Raw voter data',
+        icon: UserGroupIcon,
+        iconClasses: 'bg-blue-100 text-blue-700',
+        formats: ['csv', 'xlsx'],
+        actionLabel: 'Download voter register',
+        onDownload: (format) => openExport(buildVoterUrl(format)),
+      },
+      {
+        key: 'turnout',
+        title: 'Turnout Summary',
+        description: 'Polling-station level turnout totals, registered voters, and turnout percentage.',
+        helperText:
+          dateFrom || dateTo
+            ? 'Date filters apply to votes cast within the selected turnout window.'
+            : 'Exports turnout totals for the selected election across all polling stations.',
+        badge: 'Station summary',
+        icon: ChartBarIcon,
+        iconClasses: 'bg-emerald-100 text-emerald-700',
+        formats: ['csv', 'xlsx'],
+        actionLabel: 'Download turnout summary',
+        onDownload: (format) => openExport(buildTurnoutUrl(format)),
+      },
+      {
+        key: 'results',
+        title: 'Election Results',
+        description: 'Candidate vote totals by polling station, party, and submission metadata.',
+        helperText: selectedCandidate
+          ? `Filtered to ${selectedCandidate.name}.`
+          : 'Exports all submitted results for the selected election.',
+        badge: 'Results data',
+        icon: ClipboardDocumentListIcon,
+        iconClasses: 'bg-amber-100 text-amber-700',
+        formats: ['csv', 'xlsx'],
+        actionLabel: 'Download results',
+        onDownload: (format) => openExport(buildResultsUrl(format)),
+      },
+    ],
+    [dateFrom, dateTo, selectedCandidate]
+  );
+
+  const pdfCards: PdfCardConfig[] = [
+    {
+      type: 'summary',
+      title: 'Summary Report',
+      description: 'A polished election overview with totals, turnout, and result summaries.',
+    },
+    {
+      type: 'turnout',
+      title: 'Turnout Report',
+      description: 'A formatted polling-station turnout report for distribution or filing.',
+    },
+    {
+      type: 'results',
+      title: 'Results Report',
+      description: 'A printable results report with candidate performance by station.',
+    },
+  ];
 
   return (
     <div className="flex-1">
       <AdminHeader title="Reports & Export" />
 
-      <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-        {/* ── Filters ── */}
-        <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <FunnelIcon className="h-5 w-5 text-primary-600" />
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Report Filters</h2>
+      <div className="space-y-4 p-4 md:space-y-6 md:p-6">
+        <Card className="overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+          <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-100">
+                Report center
+              </div>
+              <div>
+                <h2 className="text-2xl font-semibold sm:text-3xl">Generate cleaner exports from one place</h2>
+                <p className="mt-2 max-w-2xl text-sm text-slate-300 sm:text-base">
+                  Choose an election, narrow the scope when needed, and download raw data or formal PDF reports
+                  without switching pages.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-sm text-slate-200">
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Election</p>
+                  <p className="mt-1 font-semibold text-white">
+                    {selectedElection?.name || (electionsLoading ? 'Loading elections...' : 'Active election')}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Active filters</p>
+                  <p className="mt-1 font-semibold text-white">{activeFilterCount}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Candidates</p>
+                  <p className="mt-1 font-semibold text-white">
+                    {selectedElection ? selectedElection._count.candidates.toLocaleString() : '--'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+              <div className="rounded-3xl border border-white/10 bg-white/10 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Results entries</p>
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {selectedElection ? selectedElection._count.results.toLocaleString() : '--'}
+                </p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/10 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Candidate scope</p>
+                <p className="mt-2 text-sm font-semibold text-white">{selectedCandidate?.name || 'All candidates'}</p>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-white/10 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Turnout window</p>
+                <p className="mt-2 text-sm font-semibold text-white">
+                  {dateFrom || dateTo ? `${dateFrom || 'Start'} to ${dateTo || 'Now'}` : 'Full period'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="border border-slate-200 bg-white">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <FunnelIcon className="h-5 w-5 text-primary-600" />
+                <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-700">Report Filters</h2>
+              </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Election applies across the page. Date range affects voter and turnout exports. Candidate applies to results only.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={clearFilters} disabled={!dateFrom && !dateTo && !selectedCandidateId}>
+              Clear optional filters
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Election */}
+          <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                Election
-              </label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Election</label>
               <select
                 value={selectedElectionId}
                 onChange={(e) => setSelectedElectionId(e.target.value)}
-                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               >
-                <option value="">— Active Election —</option>
-                {(Array.isArray(elections) ? elections : []).map((el) => (
-                  <option key={el.id} value={el.id}>
-                    {el.name} {el.isActive ? '(Active)' : `(${el.status})`}
+                <option value="">{electionsLoading ? 'Loading elections...' : 'Use active election'}</option>
+                {(Array.isArray(elections) ? elections : []).map((election) => (
+                  <option key={election.id} value={election.id}>
+                    {election.name} {election.isActive ? '(Active)' : `(${election.status})`}
                   </option>
                 ))}
               </select>
               {selectedElection && (
-                <p className="text-xs text-gray-400 mt-1">
-                  {selectedElection._count.candidates} candidates · {selectedElection._count.results} result entries
+                <p className="mt-1 text-xs text-gray-400">
+                  {selectedElection._count.candidates} candidates | {selectedElection._count.results} result entries
                 </p>
               )}
             </div>
 
-            {/* Date From */}
             <div>
-              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                Date From <span className="normal-case font-normal text-gray-400">(voter turnout)</span>
-              </label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Date From</label>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               />
+              <p className="mt-1 text-xs text-gray-400">Used for voter and turnout exports.</p>
             </div>
 
-            {/* Date To */}
             <div>
-              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                Date To <span className="normal-case font-normal text-gray-400">(voter turnout)</span>
-              </label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Date To</label>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 min={dateFrom || undefined}
-                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
               />
+              <p className="mt-1 text-xs text-gray-400">Must be on or after the start date.</p>
             </div>
 
-            {/* Candidate */}
             <div>
-              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                Candidate <span className="normal-case font-normal text-gray-400">(results only)</span>
-              </label>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Candidate</label>
               <select
                 value={selectedCandidateId}
                 onChange={(e) => setSelectedCandidateId(e.target.value)}
                 disabled={!Array.isArray(candidates) || candidates.length === 0}
-                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="block w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <option value="">All Candidates</option>
-                {(Array.isArray(candidates) ? candidates : []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.party})
+                <option value="">
+                  {candidatesLoading ? 'Loading candidates...' : !selectedElectionId ? 'Select an election first' : 'All candidates'}
+                </option>
+                {(Array.isArray(candidates) ? candidates : []).map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name} ({candidate.party})
                   </option>
                 ))}
               </select>
-              {!selectedElectionId && (
-                <p className="text-xs text-gray-400 mt-1">Select an election first</p>
-              )}
+              <p className="mt-1 text-xs text-gray-400">Only used for results exports.</p>
             </div>
           </div>
 
-          {/* Active filter pills */}
           {(dateFrom || dateTo || selectedCandidateId) && (
-            <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100">
-              <span className="text-xs text-gray-500">Active filters:</span>
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
+              <span className="text-xs font-medium text-gray-500">Active filters:</span>
               {dateFrom && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 text-xs rounded-full font-medium">
+                <button
+                  type="button"
+                  onClick={() => setDateFrom('')}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700"
+                >
                   From: {dateFrom}
-                  <button onClick={() => setDateFrom('')} className="ml-1 hover:text-primary-900">×</button>
-                </span>
+                  <span className="text-primary-500">x</span>
+                </button>
               )}
               {dateTo && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 text-xs rounded-full font-medium">
+                <button
+                  type="button"
+                  onClick={() => setDateTo('')}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700"
+                >
                   To: {dateTo}
-                  <button onClick={() => setDateTo('')} className="ml-1 hover:text-primary-900">×</button>
-                </span>
+                  <span className="text-primary-500">x</span>
+                </button>
               )}
-              {selectedCandidateId && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 text-xs rounded-full font-medium">
-                  Candidate: {candidates?.find((c) => c.id === selectedCandidateId)?.name}
-                  <button onClick={() => setSelectedCandidateId('')} className="ml-1 hover:text-primary-900">×</button>
-                </span>
+              {selectedCandidate && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCandidateId('')}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700"
+                >
+                  Candidate: {selectedCandidate.name}
+                  <span className="text-primary-500">x</span>
+                </button>
               )}
-              <button
-                onClick={() => { setDateFrom(''); setDateTo(''); setSelectedCandidateId(''); }}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
-              >
-                Clear all
-              </button>
             </div>
           )}
         </Card>
 
-        {/* ── Data Export ── */}
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Data Export</h2>
-          <p className="text-sm text-gray-500 mt-1">Download election data in CSV or Excel format</p>
+          <h2 className="text-xl font-bold text-gray-900">Data Exports</h2>
+          <p className="mt-1 text-sm text-gray-500">Download structured data for analysis, QA, and reporting workflows.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Voter Register */}
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                <UserGroupIcon className="h-5 w-5 text-primary-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Voter Register</h3>
-                <p className="text-xs text-gray-500">All registered voters with vote status</p>
-              </div>
-            </div>
-            {(dateFrom || dateTo) && (
-              <p className="text-xs text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg mb-3">
-                Filtered: voters who voted {dateFrom && `from ${dateFrom}`}{dateTo && ` to ${dateTo}`}
-              </p>
-            )}
-            <div className="flex gap-3">
-              {(['csv', 'xlsx'] as const).map((fmt) => (
-                <Button
-                  key={fmt}
-                  variant="outline"
-                  size="sm"
-                  icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                  onClick={() => window.open(buildVoterUrl(fmt), '_blank')}
-                >
-                  {fmt.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          </Card>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {exportCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.key} className="h-full border border-gray-200 bg-white">
+                <div className="flex h-full flex-col">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${card.iconClasses}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      {card.badge}
+                    </span>
+                  </div>
 
-          {/* Turnout Report */}
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                <ChartBarIcon className="h-5 w-5 text-primary-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Turnout Report</h3>
-                <p className="text-xs text-gray-500">Voter turnout per polling station</p>
-              </div>
-            </div>
-            {(dateFrom || dateTo) && (
-              <p className="text-xs text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg mb-3">
-                Filtered to date range
-              </p>
-            )}
-            <div className="flex gap-3">
-              {(['csv', 'xlsx'] as const).map((fmt) => (
-                <Button
-                  key={fmt}
-                  variant="outline"
-                  size="sm"
-                  icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                  onClick={() => window.open(buildVoterUrl(fmt), '_blank')}
-                >
-                  {fmt.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          </Card>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-gray-900">{card.title}</h3>
+                    <p className="text-sm text-gray-500">{card.description}</p>
+                    <div className="rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                      {card.helperText}
+                    </div>
+                  </div>
 
-          {/* Election Results */}
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                <ClipboardDocumentListIcon className="h-5 w-5 text-primary-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Election Results</h3>
-                <p className="text-xs text-gray-500">Votes per candidate per polling station</p>
-              </div>
-            </div>
-            {selectedCandidateId && (
-              <p className="text-xs text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg mb-3">
-                Candidate: {candidates?.find((c) => c.id === selectedCandidateId)?.name}
-              </p>
-            )}
-            <div className="flex gap-3">
-              {(['csv', 'xlsx'] as const).map((fmt) => (
-                <Button
-                  key={fmt}
-                  variant="outline"
-                  size="sm"
-                  icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                  onClick={() => window.open(buildResultsUrl(fmt), '_blank')}
-                >
-                  {fmt.toUpperCase()}
-                </Button>
-              ))}
-            </div>
-          </Card>
+                  <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
+                    <CheckCircleIcon className="h-4 w-4 text-emerald-500" />
+                    {card.actionLabel}
+                  </div>
+
+                  <div className="mt-5 flex gap-3">
+                    {card.formats.map((format) => (
+                      <Button
+                        key={format}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 justify-center"
+                        icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                        onClick={() => card.onDownload(format)}
+                      >
+                        {format.toUpperCase()}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
 
-        {/* ── PDF Reports ── */}
         <div>
           <h2 className="text-xl font-bold text-gray-900">PDF Reports</h2>
-          <p className="text-sm text-gray-500 mt-1">Generate and download formatted PDF reports</p>
+          <p className="mt-1 text-sm text-gray-500">Generate polished, print-ready reports for review, circulation, or filing.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            {
-              title: 'Summary Report',
-              description: 'Full election summary with statistics, results, and station overview',
-              type: 'summary',
-            },
-            {
-              title: 'Turnout Report',
-              description: 'Detailed voter turnout breakdown by polling station',
-              type: 'turnout',
-            },
-            {
-              title: 'Results Report',
-              description: 'Complete election results with per-station candidate votes',
-              type: 'results',
-            },
-          ].map((report) => (
-            <Card key={report.type}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                  <DocumentTextIcon className="h-5 w-5 text-red-600" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {pdfCards.map((report) => (
+            <Card key={report.type} className="h-full border border-gray-200 bg-gradient-to-br from-white to-rose-50/40">
+              <div className="flex h-full flex-col">
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-100 text-rose-700">
+                  <DocumentTextIcon className="h-5 w-5" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{report.title}</h3>
-                  <p className="text-xs text-gray-500">{report.description}</p>
+
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-gray-900">{report.title}</h3>
+                  <p className="text-sm text-gray-500">{report.description}</p>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-rose-100 bg-white/80 px-3 py-3 text-xs text-gray-600">
+                  Election: <span className="font-medium text-gray-900">{selectedElection?.name || 'Active election'}</span>
+                </div>
+
+                <div className="mt-auto pt-5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    icon={<ArrowDownTrayIcon className="h-4 w-4" />}
+                    onClick={() => openExport(buildPdfUrl(report.type))}
+                  >
+                    Download PDF
+                  </Button>
                 </div>
               </div>
-              {selectedElection && (
-                <p className="text-xs text-gray-500 mb-3">
-                  Election: <span className="font-medium text-gray-700">{selectedElection.name}</span>
-                </p>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                icon={<ArrowDownTrayIcon className="h-4 w-4" />}
-                onClick={() => window.open(buildPdfUrl(report.type), '_blank')}
-              >
-                Download PDF
-              </Button>
             </Card>
           ))}
         </div>

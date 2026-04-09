@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import Modal from '@/components/ui/Modal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import { PlusIcon, CheckCircleIcon, ArchiveBoxArrowDownIcon } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Election {
   id: string;
@@ -30,6 +30,7 @@ export default function ElectionSelector() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', date: '' });
   const [saving, setSaving] = useState(false);
+  const [archivePending, setArchivePending] = useState<{ id: string; name: string } | null>(null);
 
   // Guard against non-array responses (e.g. a 401 { error: "..." } during hydration)
   const elections: Election[] = Array.isArray(electionsRaw) ? electionsRaw : [];
@@ -82,13 +83,14 @@ export default function ElectionSelector() {
     }
   };
 
-  const handleArchive = async (electionId: string, electionName: string) => {
-    if (!confirm(`Archive "${electionName}"? This will mark it as COMPLETED and move it to Election Archives.`)) return;
+  const handleArchive = async () => {
+    if (!archivePending) return;
+    setArchivePending(null);
     try {
       const res = await fetch('/api/elections', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: electionId, status: 'COMPLETED' }),
+        body: JSON.stringify({ id: archivePending.id, status: 'COMPLETED' }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -122,6 +124,16 @@ export default function ElectionSelector() {
           </button>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={!!archivePending}
+        onClose={() => setArchivePending(null)}
+        onConfirm={handleArchive}
+        title="Archive Election"
+        message={`Archive "${archivePending?.name}"? This will mark it as COMPLETED and move it to Election Archives.`}
+        confirmLabel="Archive"
+        variant="warning"
+      />
 
       {canManage && <Modal isOpen={createOpen} onClose={() => { setCreateOpen(false); setError(null); }} title="Manage Elections" size="lg">
         <div className="space-y-4">
@@ -169,7 +181,7 @@ export default function ElectionSelector() {
                           Set Active
                         </Button>
                         <button
-                          onClick={() => handleArchive(el.id, el.name)}
+                          onClick={() => setArchivePending({ id: el.id, name: el.name })}
                           className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                           title="Archive election"
                         >

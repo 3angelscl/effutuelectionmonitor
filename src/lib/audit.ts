@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { formatActivityTitle } from './activity';
 
 interface AuditEntry {
   userId: string;
@@ -22,7 +23,7 @@ export async function logAudit({ userId, action, entity, entityId, detail, metad
       data: {
         userId,
         type: action ? action.toUpperCase().replace(/\s+/g, '_') : 'ADMIN_MUTATION',
-        title: `${action} ${entity}`,
+        title: formatActivityTitle(`${action} ${entity}`),
         detail: detail || `${action} ${entity} (${entityId})`,
         metadata: metadataStr,
       },

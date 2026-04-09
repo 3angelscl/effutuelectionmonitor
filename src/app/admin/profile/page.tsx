@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import Link from 'next/link';
@@ -20,8 +21,6 @@ import {
   Cog6ToothIcon,
   PencilIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface AuditEntry {
   id: string;

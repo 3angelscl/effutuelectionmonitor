@@ -1,9 +1,26 @@
+export async function fetcher(url: string) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const error = new Error('Fetch error') as Error & { status: number };
+    error.status = res.status;
+    try {
+      const body = await res.json();
+      error.message = body.error || `Request failed (${res.status})`;
+    } catch {
+      error.message = `Request failed (${res.status})`;
+    }
+    throw error;
+  }
+  return res.json();
+}
+
 export function calculateTurnout(voted: number, total: number): number {
   if (total === 0) return 0;
   return Math.round((voted / total) * 1000) / 10;
 }
 
-export function formatNumber(num: number): string {
+export function formatNumber(num: number | null | undefined): string {
+  if (num == null) return '0';
   return num.toLocaleString();
 }
 

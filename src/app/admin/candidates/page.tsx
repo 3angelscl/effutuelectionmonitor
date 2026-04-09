@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
@@ -26,8 +27,6 @@ interface Election {
   favCandidate1Id: string | null;
   favCandidate2Id: string | null;
 }
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Candidate {
   id: string;

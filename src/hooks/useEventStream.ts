@@ -20,10 +20,10 @@ export interface StreamEvent {
 interface UseEventStreamOptions {
   onEvent?: (event: StreamEvent) => void;
   autoRevalidate?: boolean;
-  eventMap?: Partial<Record<string, { keys: string[]; debounceMs: number }>>;
+  eventMap?: Partial<Record<string, { keys: readonly string[]; debounceMs: number }>>;
 }
 
-const EVENT_TO_SWR_KEYS: Record<string, { keys: string[]; debounceMs: number }> = {
+const EVENT_TO_SWR_KEYS: Record<string, { keys: readonly string[]; debounceMs: number }> = {
   'turnout:updated': { keys: ['/api/stats/live-summary', '/api/snapshots'], debounceMs: 3000 },
   'results:submitted': { keys: ['/api/stats/live-summary', '/api/stats', '/api/results'], debounceMs: 2000 },
   'stats:updated': { keys: ['/api/stats/live-summary', '/api/stats'], debounceMs: 2000 },

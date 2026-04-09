@@ -25,10 +25,9 @@ interface StationMapInnerProps {
   areas: { id: string; name: string; boundaryGeoJson: string | null }[];
 }
 
-const DEFAULT_CENTER: [number, number] = [5.355, -0.630];
+const DEFAULT_CENTER: [number, number] = [5.355, -0.63];
 const DEFAULT_ZOOM = 13;
 
-/** Escape HTML special characters to prevent XSS in Leaflet popups */
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -47,45 +46,132 @@ function getStationStatus(station: StationData): 'REPORTED' | 'ACTIVE' | 'NO_AGE
 
 function getMarkerColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'): string {
   switch (status) {
-    case 'REPORTED': return '#22c55e';
-    case 'ACTIVE':   return '#3b82f6';
-    case 'NO_AGENT': return '#f97316';
-    case 'PENDING':  return '#9ca3af';
+    case 'REPORTED':
+      return '#16a34a';
+    case 'ACTIVE':
+      return '#2563eb';
+    case 'NO_AGENT':
+      return '#ea580c';
+    case 'PENDING':
+      return '#64748b';
   }
 }
-
 
 function getStatusLabel(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'): string {
   switch (status) {
-    case 'REPORTED': return 'Reported';
-    case 'ACTIVE':   return 'Active';
-    case 'NO_AGENT': return 'No Agent';
-    case 'PENDING':  return 'Pending';
+    case 'REPORTED':
+      return 'Reported';
+    case 'ACTIVE':
+      return 'Active';
+    case 'NO_AGENT':
+      return 'No Agent';
+    case 'PENDING':
+      return 'Pending';
   }
 }
 
-function getStatusColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'): string {
-  switch (status) {
-    case 'REPORTED': return '#22c55e';
-    case 'ACTIVE':   return '#3b82f6';
-    case 'NO_AGENT': return '#f97316';
-    case 'PENDING':  return '#9ca3af';
-  }
+function getTurnoutTone(turnout: number): string {
+  if (turnout >= 80) return '#0f766e';
+  if (turnout >= 60) return '#0284c7';
+  if (turnout >= 40) return '#7c3aed';
+  if (turnout >= 20) return '#d97706';
+  return '#475569';
+}
+
+function getPinSize(station: StationData): number {
+  if (station.totalRegistered >= 1200) return 26;
+  if (station.totalRegistered >= 800) return 24;
+  if (station.totalRegistered >= 500) return 22;
+  return 20;
+}
+
+function createStationIcon(station: StationData, statusColor: string): L.DivIcon {
+  const turnout = Math.round(station.turnoutPercentage);
+  const turnoutColor = getTurnoutTone(turnout);
+  const size = getPinSize(station);
+  const safeTurnout = Number.isFinite(turnout) ? turnout : 0;
+  const haloSize = size + 12;
+  const chipLabel = safeTurnout > 0 ? `${safeTurnout}%` : '0%';
+
+  return L.divIcon({
+    className: '',
+    html: `
+      <div style="position:relative;width:${size + 18}px;height:${size + 28}px;">
+        <div style="
+          position:absolute;
+          left:50%;
+          top:4px;
+          width:${haloSize}px;
+          height:${haloSize}px;
+          transform:translateX(-50%);
+          border-radius:9999px;
+          background:${statusColor}22;
+          box-shadow:0 0 0 10px ${statusColor}10;
+        "></div>
+        <div style="
+          position:absolute;
+          left:50%;
+          top:8px;
+          width:${size}px;
+          height:${size}px;
+          transform:translateX(-50%);
+          border-radius:9999px;
+          background:linear-gradient(180deg, ${statusColor} 0%, ${turnoutColor} 100%);
+          border:3px solid #ffffff;
+          box-shadow:0 10px 20px rgba(15,23,42,0.22);
+        "></div>
+        <div style="
+          position:absolute;
+          left:50%;
+          top:${size + 2}px;
+          width:12px;
+          height:12px;
+          transform:translateX(-50%) rotate(45deg);
+          background:${turnoutColor};
+          border-right:2px solid #ffffff;
+          border-bottom:2px solid #ffffff;
+          box-shadow:2px 2px 10px rgba(15,23,42,0.12);
+        "></div>
+        <div style="
+          position:absolute;
+          left:50%;
+          top:-2px;
+          transform:translateX(-50%);
+          min-width:34px;
+          padding:2px 6px;
+          border-radius:9999px;
+          background:rgba(15,23,42,0.88);
+          color:#ffffff;
+          font-size:10px;
+          font-weight:700;
+          text-align:center;
+          letter-spacing:0.01em;
+        ">${chipLabel}</div>
+      </div>
+    `,
+    iconSize: [size + 18, size + 28],
+    iconAnchor: [(size + 18) / 2, size + 26],
+    popupAnchor: [0, -(size + 16)],
+    tooltipAnchor: [0, -(size + 10)],
+  });
 }
 
 export default function StationMapInner({ stations, areas }: StationMapInnerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.CircleMarker[]>([]);
+  const markersRef = useRef<L.Layer[]>([]);
   const areaLayerRef = useRef<L.LayerGroup | null>(null);
 
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return;
 
-    const map = L.map(mapRef.current).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    const map = L.map(mapRef.current, {
+      zoomControl: true,
+      minZoom: 10,
+    }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
     }).addTo(map);
 
     areaLayerRef.current = L.layerGroup().addTo(map);
@@ -111,12 +197,17 @@ export default function StationMapInner({ stations, areas }: StationMapInnerProp
       if (points.length < 3) return;
 
       L.polygon(points, {
-        color: '#2563eb',
-        weight: 2,
+        color: '#1d4ed8',
+        weight: 1.5,
         fillColor: '#60a5fa',
-        fillOpacity: 0.08,
+        fillOpacity: 0.05,
+        dashArray: '5 6',
       })
-        .bindTooltip(area.name, { sticky: true })
+        .bindTooltip(area.name, {
+          sticky: true,
+          direction: 'center',
+          opacity: 0.85,
+        })
         .addTo(areaLayer);
     });
   }, [areas]);
@@ -125,8 +216,7 @@ export default function StationMapInner({ stations, areas }: StationMapInnerProp
     const map = mapInstance.current;
     if (!map) return;
 
-    // Remove existing markers
-    markersRef.current.forEach((m) => m.remove());
+    markersRef.current.forEach((layer) => layer.remove());
     markersRef.current = [];
 
     for (const station of stations) {
@@ -135,59 +225,62 @@ export default function StationMapInner({ stations, areas }: StationMapInnerProp
       const status = getStationStatus(station);
       const color = getMarkerColor(status);
       const statusLabel = getStatusLabel(status);
-      const statusColor = getStatusColor(status);
-
       const safePsCode = escapeHtml(station.psCode);
       const safeName = escapeHtml(station.name);
       const safeLocation = station.location ? escapeHtml(station.location) : '';
       const safeAgentName = station.agent ? escapeHtml(station.agent.name) : '';
+      const turnoutWidth = Math.max(8, Math.min(100, Math.round(station.turnoutPercentage)));
 
       const popupContent = `
-        <div style="min-width:180px;font-family:system-ui,sans-serif">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <span style="font-family:monospace;font-size:11px;font-weight:700;color:#4f46e5;background:#eef2ff;padding:2px 6px;border-radius:4px">${safePsCode}</span>
-            <span style="font-size:10px;font-weight:600;color:${statusColor};background:${statusColor}18;padding:2px 8px;border-radius:9999px">${statusLabel}</span>
+        <div style="min-width:220px;font-family:system-ui,sans-serif">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <span style="font-family:monospace;font-size:11px;font-weight:700;color:#4338ca;background:#eef2ff;padding:3px 7px;border-radius:9999px">${safePsCode}</span>
+            <span style="font-size:10px;font-weight:700;color:${color};background:${color}18;padding:3px 9px;border-radius:9999px;text-transform:uppercase;letter-spacing:0.04em">${statusLabel}</span>
           </div>
-          <p style="font-size:13px;font-weight:600;color:#111827;margin:0 0 4px 0">${safeName}</p>
-          ${safeLocation ? `<p style="font-size:11px;color:#6b7280;margin:0 0 6px 0">${safeLocation}</p>` : ''}
-          <div style="border-top:1px solid #f3f4f6;padding-top:6px;margin-top:4px">
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280">
-              <span>Agent</span>
-              <span style="font-weight:500;color:#374151">${safeAgentName || '<em style="color:#f97316">Unassigned</em>'}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-top:2px">
+          <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 4px 0">${safeName}</p>
+          ${safeLocation ? `<p style="font-size:11px;color:#64748b;margin:0 0 10px 0">${safeLocation}</p>` : ''}
+          <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:6px">
               <span>Turnout</span>
-              <span style="font-weight:600;color:#374151">${station.turnoutPercentage}%</span>
+              <span style="font-weight:700;color:#0f172a">${station.turnoutPercentage.toFixed(1)}%</span>
             </div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-top:2px">
+            <div style="height:7px;background:#e2e8f0;border-radius:9999px;overflow:hidden;margin-bottom:8px">
+              <div style="width:${turnoutWidth}%;height:100%;background:linear-gradient(90deg,#38bdf8 0%,#2563eb 100%);border-radius:9999px"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px">
               <span>Voted / Registered</span>
-              <span style="font-weight:500;color:#374151">${station.totalVoted} / ${station.totalRegistered}</span>
+              <span style="font-weight:600;color:#334155">${station.totalVoted.toLocaleString()} / ${station.totalRegistered.toLocaleString()}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b">
+              <span>Agent</span>
+              <span style="font-weight:600;color:#334155">${safeAgentName || 'Unassigned'}</span>
             </div>
           </div>
         </div>
       `;
 
-      const marker = L.circleMarker([station.latitude, station.longitude], {
-        radius: 9,
-        fillColor: color,
-        color: 'white',
-        weight: 2.5,
-        opacity: 1,
-        fillOpacity: 1,
-      }).bindPopup(popupContent, { maxWidth: 260 }).addTo(map);
+      const marker = L.marker([station.latitude, station.longitude], {
+        icon: createStationIcon(station, color),
+        keyboard: true,
+        title: `${station.psCode} - ${station.name}`,
+      })
+        .bindTooltip(`${station.psCode} - ${station.name}`, {
+          direction: 'top',
+          offset: [0, -16],
+          opacity: 0.95,
+        })
+        .bindPopup(popupContent, { maxWidth: 280, className: 'station-map-popup' })
+        .addTo(map);
 
       markersRef.current.push(marker);
     }
 
-    // Fit bounds if we have markers
     const layers: L.Layer[] = [...markersRef.current, ...(areaLayerRef.current?.getLayers() ?? [])];
     if (layers.length > 0) {
       const group = L.featureGroup(layers);
-      map.fitBounds(group.getBounds().pad(0.1), { maxZoom: 12 });
+      map.fitBounds(group.getBounds().pad(0.12), { maxZoom: 13 });
     }
-  }, [stations, areas]);
+  }, [stations]);
 
-  return (
-    <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '400px' }} />
-  );
+  return <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '400px' }} />;
 }

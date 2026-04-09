@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { decryptField } from '@/lib/crypto';
 
 export async function GET(
   request: NextRequest,
@@ -87,7 +88,10 @@ export async function GET(
       : false;
 
     return NextResponse.json({
-      agent,
+      agent: {
+        ...agent,
+        phone: decryptField(agent.phone),
+      },
       stats: {
         votersCheckedIn,
         lastActivity: lastLog?.createdAt || null,

@@ -30,9 +30,9 @@ export async function GET() {
       },
     });
 
-    // Group by ward
-    const wardMap: Map<string, {
-      ward: string;
+    // Group by electoral area
+    const areaMap: Map<string, {
+      electoralArea: string;
       totalRegistered: number;
       totalVoted: number;
       stationCount: number;
@@ -41,11 +41,11 @@ export async function GET() {
     }> = new Map();
 
     for (const station of stations) {
-      const wardName = station.ward || 'Unassigned';
+      const areaName = station.electoralArea || 'Unassigned';
 
-      if (!wardMap.has(wardName)) {
-        wardMap.set(wardName, {
-          ward: wardName,
+      if (!areaMap.has(areaName)) {
+        areaMap.set(areaName, {
+          electoralArea: areaName,
           totalRegistered: 0,
           totalVoted: 0,
           stationCount: 0,
@@ -54,29 +54,29 @@ export async function GET() {
         });
       }
 
-      const wardData = wardMap.get(wardName)!;
-      wardData.stationCount++;
+      const areaData = areaMap.get(areaName)!;
+      areaData.stationCount++;
 
       const stationRegistered = station.voters.length;
       const stationVoted = station.voters.filter(
         (v) => v.turnout.some((t) => t.hasVoted)
       ).length;
 
-      wardData.totalRegistered += stationRegistered;
-      wardData.totalVoted += stationVoted;
+      areaData.totalRegistered += stationRegistered;
+      areaData.totalVoted += stationVoted;
 
       if (station.results.length > 0) {
-        wardData.stationsReporting++;
+        areaData.stationsReporting++;
       }
 
       // Aggregate candidate results
       for (const result of station.results) {
         const key = result.candidateId;
-        const existing = wardData.candidateVotes.get(key);
+        const existing = areaData.candidateVotes.get(key);
         if (existing) {
           existing.votes += result.votes;
         } else {
-          wardData.candidateVotes.set(key, {
+          areaData.candidateVotes.set(key, {
             candidateId: result.candidateId,
             candidateName: result.candidate.name,
             party: result.candidate.party,
@@ -88,34 +88,34 @@ export async function GET() {
     }
 
     // Convert to array
-    const result = Array.from(wardMap.values()).map((w) => {
-      const candidates = Array.from(w.candidateVotes.values())
+    const result = Array.from(areaMap.values()).map((a) => {
+      const candidates = Array.from(a.candidateVotes.values())
         .sort((a, b) => b.votes - a.votes);
-      const totalVotesInWard = candidates.reduce((sum, c) => sum + c.votes, 0);
+      const totalVotesInArea = candidates.reduce((sum, c) => sum + c.votes, 0);
 
       return {
-        ward: w.ward,
-        totalRegistered: w.totalRegistered,
-        totalVoted: w.totalVoted,
-        turnoutPercentage: w.totalRegistered > 0
-          ? Math.round((w.totalVoted / w.totalRegistered) * 10000) / 100
+        electoralArea: a.electoralArea,
+        totalRegistered: a.totalRegistered,
+        totalVoted: a.totalVoted,
+        turnoutPercentage: a.totalRegistered > 0
+          ? Math.round((a.totalVoted / a.totalRegistered) * 10000) / 100
           : 0,
-        stationCount: w.stationCount,
-        stationsReporting: w.stationsReporting,
+        stationCount: a.stationCount,
+        stationsReporting: a.stationsReporting,
         candidates: candidates.map((c) => ({
           ...c,
-          percentage: totalVotesInWard > 0
-            ? Math.round((c.votes / totalVotesInWard) * 10000) / 100
+          percentage: totalVotesInArea > 0
+            ? Math.round((c.votes / totalVotesInArea) * 10000) / 100
             : 0,
         })),
       };
     });
 
-    // Sort by ward name, with Unassigned last
+    // Sort by electoral area name, with Unassigned last
     result.sort((a, b) => {
-      if (a.ward === 'Unassigned') return 1;
-      if (b.ward === 'Unassigned') return -1;
-      return a.ward.localeCompare(b.ward);
+      if (a.electoralArea === 'Unassigned') return 1;
+      if (b.electoralArea === 'Unassigned') return -1;
+      return a.electoralArea.localeCompare(b.electoralArea);
     });
 
     return NextResponse.json(result);

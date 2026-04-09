@@ -28,7 +28,7 @@ export default function MapPicker({ latitude, longitude, onChange, height = 'h-6
       ? [latitude, longitude]
       : DEFAULT_CENTER;
 
-    const map = L.map(mapRef.current).setView(center, DEFAULT_ZOOM);
+    const map = L.map(mapRef.current, { zoomAnimation: false }).setView(center, DEFAULT_ZOOM);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',

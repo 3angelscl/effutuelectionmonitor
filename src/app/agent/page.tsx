@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   UserGroupIcon,
   CheckCircleIcon,
@@ -15,8 +15,6 @@ import {
   ClipboardDocumentCheckIcon,
   PhotoIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface StationData {
   id: string;
@@ -37,7 +35,7 @@ interface CheckInData {
 
 export default function AgentDashboard() {
   const { data: session } = useSession();
-  const { data: stations } = useSWR<StationData[]>('/api/stations', fetcher, { refreshInterval: 30000 });
+  const { data: stations, isLoading: stationsLoading } = useSWR<StationData[]>('/api/stations', fetcher, { refreshInterval: 30000 });
   const { data: checkInData, mutate: mutateCheckIn } = useSWR<CheckInData>('/api/agent/checkin', fetcher, { refreshInterval: 30000 });
 
   const [checkingIn, setCheckingIn] = useState(false);
@@ -79,6 +77,18 @@ export default function AgentDashboard() {
       setCheckingIn(false);
     }
   };
+
+  if (stationsLoading || !stations) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
 
   if (!agentStation) {
     return (

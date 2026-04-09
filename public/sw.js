@@ -1,5 +1,5 @@
 // Service Worker for Election Monitor — Agent PWA
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const STATIC_CACHE = `em-static-v${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `em-dynamic-v${CACHE_VERSION}`;
 const QUEUE_KEY = 'offline-queue';
@@ -58,9 +58,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ── API GETs — network-first with 3s timeout, fall back to cache ──
+  // ── API GETs — network-first with 10s timeout, fall back to cache ──
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirstWithTimeout(request, DYNAMIC_CACHE, 3000));
+    event.respondWith(networkFirstWithTimeout(request, DYNAMIC_CACHE, 10000));
     return;
   }
 
@@ -233,4 +233,38 @@ self.addEventListener('sync', (event) => {
   if (event.tag === 'replay-queue') {
     event.waitUntil(replayQueue());
   }
+});
+
+// ── Push Notifications ──────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = { title: 'Election Monitor', body: '', url: '/agent' };
+  if (event.data) {
+    try { data = { ...data, ...event.data.json() }; } catch { /* ignore */ }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      tag: data.tag || 'election-monitor',
+      data: { url: data.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/agent';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => c.url.includes(self.location.origin));
+      if (existing) {
+        existing.focus();
+        existing.navigate(url);
+      } else {
+        self.clients.openWindow(url);
+      }
+    })
+  );
 });

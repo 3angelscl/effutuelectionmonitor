@@ -1,11 +1,10 @@
 'use client';
 
 import useSWR from 'swr';
+import { fetcher } from '@/lib/utils';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import { BellIcon } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Notification {
   id: string;

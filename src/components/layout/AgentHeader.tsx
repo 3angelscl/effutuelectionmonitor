@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession, signOut } from 'next-auth/react';
 import useSWR from 'swr';
 import { MagnifyingGlassIcon, BellIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+import PushSubscribeButton from '@/components/PushSubscribeButton';
 
 interface Notification {
   id: string;
@@ -120,6 +120,9 @@ export default function AgentHeader({ title }: AgentHeaderProps) {
               className="pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg w-48 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
             />
           </div>
+
+          {/* Push subscribe toggle */}
+          <PushSubscribeButton />
 
           {/* Notifications */}
           <div className="relative" ref={notifRef}>

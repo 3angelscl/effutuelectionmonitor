@@ -56,6 +56,7 @@ export async function GET(
           firstName: true,
           lastName: true,
           age: true,
+          gender: true,
           photo: true,
           turnout: activeElection
             ? { where: { electionId: activeElection.id }, select: { hasVoted: true, votedAt: true } }
@@ -118,6 +119,7 @@ export async function GET(
         firstName: v.firstName,
         lastName: v.lastName,
         age: v.age,
+        gender: v.gender,
         photo: v.photo,
         hasVoted: v.turnout?.some((t) => t.hasVoted) || false,
       })),

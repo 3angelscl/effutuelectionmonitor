@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import useSWR from 'swr';
 import Card from '@/components/ui/Card';
@@ -13,8 +14,6 @@ import {
   XMarkIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface TallyPhoto {
   id: string;
@@ -48,7 +47,7 @@ export default function AgentTallyPhotosPage() {
   const userId = (session?.user as { id?: string })?.id;
 
   const { data: stations } = useSWR<StationData[]>('/api/stations', fetcher);
-  const station = (stations || []).find((s) => s.agentId === userId);
+  const station = (Array.isArray(stations) ? stations : []).find((s) => s.agentId === userId);
 
   const { data: photosData, mutate: mutatePhotos } = useSWR<{ photos: TallyPhoto[]; total: number }>(
     '/api/tally-photos',

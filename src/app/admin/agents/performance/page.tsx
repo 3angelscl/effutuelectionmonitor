@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, Fragment } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -13,8 +14,6 @@ import {
   ChartBarIcon,
   ChevronDownIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface ScoreBreakdown {
   assigned: number;

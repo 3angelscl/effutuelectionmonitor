@@ -65,7 +65,7 @@ export default function StationMapPage() {
       <AdminHeader title="Station Map" />
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white shrink-0">
+      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 shrink-0">
         <Link
           href="/admin/stations"
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -73,16 +73,22 @@ export default function StationMapPage() {
           <ArrowLeftIcon className="h-4 w-4" />
           Back to Stations
         </Link>
-        <div className="flex items-center gap-3 ml-2">
+        <div className="ml-2 flex flex-wrap items-center gap-2">
           {[
-            { color: '#22c55e', label: 'Reported' },
-            { color: '#3b82f6', label: 'Active' },
-            { color: '#f97316', label: 'No Agent' },
-            { color: '#9ca3af', label: 'Pending' },
-          ].map(({ color, label }) => (
-            <div key={label} className="flex items-center gap-1.5">
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-              <span className="text-xs text-gray-500">{label}</span>
+            { color: '#16a34a', label: 'Reported', note: 'Results submitted' },
+            { color: '#2563eb', label: 'Active', note: 'Turnout recorded' },
+            { color: '#ea580c', label: 'No Agent', note: 'Needs assignment' },
+            { color: '#64748b', label: 'Pending', note: 'Quiet station' },
+          ].map(({ color, label, note }) => (
+            <div key={label} className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
+              <div className="relative h-3 w-3 shrink-0">
+                <div className="absolute inset-0 rounded-full opacity-20" style={{ background: color }} />
+                <div className="absolute inset-[2px] rounded-full" style={{ background: color }} />
+              </div>
+              <div className="leading-none">
+                <p className="text-[11px] font-semibold text-gray-700">{label}</p>
+                <p className="text-[10px] text-gray-400">{note}</p>
+              </div>
             </div>
           ))}
         </div>

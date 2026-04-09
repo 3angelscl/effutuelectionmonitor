@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const stations = await prisma.pollingStation.findMany({
       select: {
         id: true,
-        ward: true,
+        electoralArea: true,
         results: {
           where: { electionId: election.id },
           select: { id: true },
@@ -62,9 +62,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Aggregate by ward
-    const wardMap = new Map<string, {
-      ward: string;
+    // Aggregate by electoral area
+    const areaMap = new Map<string, {
+      electoralArea: string;
       stationCount: number;
       registeredVoters: number;
       votedVoters: number;
@@ -72,34 +72,34 @@ export async function GET(request: NextRequest) {
     }>();
 
     for (const station of stations) {
-      const wardName = station.ward || 'Unassigned';
-      if (!wardMap.has(wardName)) {
-        wardMap.set(wardName, { ward: wardName, stationCount: 0, registeredVoters: 0, votedVoters: 0, stationsReported: 0 });
+      const areaName = station.electoralArea || 'Unassigned';
+      if (!areaMap.has(areaName)) {
+        areaMap.set(areaName, { electoralArea: areaName, stationCount: 0, registeredVoters: 0, votedVoters: 0, stationsReported: 0 });
       }
-      const entry = wardMap.get(wardName)!;
+      const entry = areaMap.get(areaName)!;
       entry.stationCount += 1;
       entry.registeredVoters += registeredMap.get(station.id) || 0;
       entry.votedVoters += votedByStation.get(station.id) || 0;
       if (station.results.length > 0) entry.stationsReported += 1;
     }
 
-    const result = Array.from(wardMap.values())
-      .map((w) => ({
-        ward: w.ward,
-        stationCount: w.stationCount,
-        registeredVoters: w.registeredVoters,
-        votedVoters: w.votedVoters,
-        turnoutPct: w.registeredVoters > 0
-          ? Math.round((w.votedVoters / w.registeredVoters) * 1000) / 10
+    const result = Array.from(areaMap.values())
+      .map((a) => ({
+        electoralArea: a.electoralArea,
+        stationCount: a.stationCount,
+        registeredVoters: a.registeredVoters,
+        votedVoters: a.votedVoters,
+        turnoutPct: a.registeredVoters > 0
+          ? Math.round((a.votedVoters / a.registeredVoters) * 1000) / 10
           : 0,
-        stationsReported: w.stationsReported,
+        stationsReported: a.stationsReported,
       }))
       .sort((a, b) => b.turnoutPct - a.turnoutPct);
 
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
-    console.error('Ward stats error:', error);
-    return NextResponse.json({ error: 'Failed to fetch ward stats' }, { status: 500 });
+    console.error('Electoral area stats error:', error);
+    return NextResponse.json({ error: 'Failed to fetch electoral area stats' }, { status: 500 });
   }
 }

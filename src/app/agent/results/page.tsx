@@ -7,10 +7,8 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import { formatNumber } from '@/lib/utils';
-import { CheckCircleIcon } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+import { fetcher, formatNumber } from '@/lib/utils';
+import { CheckCircleIcon, ExclamationTriangleIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 
 interface Candidate {
   id: string;
@@ -34,10 +32,14 @@ export default function ResultsPage() {
   const { data: session } = useSession();
   const userId = (session?.user as { id?: string })?.id;
 
-  const { data: stations } = useSWR<StationData[]>('/api/stations', fetcher);
+  const { data: stations, isLoading: stationsLoading } = useSWR<StationData[]>('/api/stations', fetcher);
   const { data: candidates } = useSWR<Candidate[]>('/api/candidates', fetcher);
 
-  const station = (stations || []).find((s) => s.agentId === userId);
+  const station = (Array.isArray(stations) ? stations : []).find((s) => s.agentId === userId);
+
+  // Check-in status
+  const { data: checkinData, isLoading: checkinLoading } = useSWR(userId ? '/api/agent/checkin' : null, fetcher, { refreshInterval: 30000 });
+  const isCheckedIn = checkinData?.checkInStatus?.type === 'CHECK_IN';
 
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [resultType, setResultType] = useState<'PROVISIONAL' | 'FINAL'>('PROVISIONAL');
@@ -137,12 +139,128 @@ export default function ResultsPage() {
     }
   };
 
+  if (stationsLoading || !stations) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   if (!station) {
     return (
       <div className="p-6">
         <Card className="text-center py-12">
           <p className="text-gray-500">No polling station assigned.</p>
         </Card>
+      </div>
+    );
+  }
+
+  if (checkinLoading || !checkinData) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64" />
+          <div className="h-4 bg-gray-200 rounded w-48" />
+          <div className="h-40 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isCheckedIn) {
+    return (
+      <div className="p-4 md:p-6 space-y-4">
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Submit Election Results</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            {station.name} ({station.psCode})
+          </p>
+        </div>
+        <Card className="text-center py-12">
+          <div className="flex flex-col items-center gap-3">
+            <div className="p-3 rounded-full bg-amber-50">
+              <ExclamationTriangleIcon className="h-8 w-8 text-amber-500" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Check-in Required</p>
+              <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+                You must check in at your polling station before you can submit results. Go to your dashboard and tap the <strong>Check In</strong> button.
+              </p>
+            </div>
+            <a
+              href="/agent"
+              className="mt-2 inline-flex items-center px-4 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Go to Dashboard
+            </a>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Block agents from modifying after FINAL submission
+  const isFinallySubmitted = submitted && submittedType === 'FINAL';
+
+  if (isFinallySubmitted) {
+    return (
+      <div className="p-4 md:p-6 space-y-6">
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Submit Election Results</h2>
+          <p className="text-gray-500 text-sm mt-1">
+            {station.name} ({station.psCode}) &middot; {formatNumber(station.totalRegistered)} registered voters
+          </p>
+        </div>
+
+        <Card className="text-center py-12">
+          <div className="flex flex-col items-center gap-4">
+            <div className="p-3 rounded-full bg-green-50">
+              <LockClosedIcon className="h-8 w-8 text-green-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 text-lg">Final Results Submitted</p>
+              <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+                Final results have been submitted for this station. The results are now locked and cannot be modified. Contact an administrator if corrections are needed.
+              </p>
+            </div>
+            <Badge variant="success" size="sm">FINAL</Badge>
+          </div>
+        </Card>
+
+        {/* Show submitted results in read-only mode */}
+        <div className="space-y-3">
+          {(candidates || []).map((candidate) => (
+            <Card key={candidate.id} className="!p-3 md:!p-5">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-white text-xs md:text-sm font-bold shrink-0"
+                  style={{ backgroundColor: candidate.color }}
+                >
+                  {candidate.party.slice(0, 3)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 text-sm md:text-base truncate">{candidate.name}</h3>
+                  <p className="text-xs text-gray-500 truncate">{candidate.partyFull || candidate.party}</p>
+                </div>
+                <p className="text-lg md:text-xl font-bold text-gray-900 shrink-0">
+                  {formatNumber(votes[candidate.id] || 0)}
+                </p>
+              </div>
+            </Card>
+          ))}
+          <Card className="bg-gray-50 !p-3 md:!p-5">
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-900">Total Votes</p>
+              <p className="text-2xl md:text-3xl font-bold text-gray-900">{formatNumber(totalVotes)}</p>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   }

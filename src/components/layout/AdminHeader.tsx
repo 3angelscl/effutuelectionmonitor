@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { fetcher } from '@/lib/utils';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { MagnifyingGlassIcon, BellIcon, Cog6ToothIcon, UserCircleIcon, ArrowRightStartOnRectangleIcon, Bars3Icon } from '@heroicons/react/24/outline';
 import { useAdminSidebar } from '@/contexts/AdminSidebarContext';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Notification {
   id: string;

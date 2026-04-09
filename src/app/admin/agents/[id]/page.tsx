@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { fetcher } from '@/lib/utils';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
@@ -8,6 +10,7 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import StatCard from '@/components/ui/StatCard';
+import { formatActivityTitle } from '@/lib/activity';
 import {
   UserGroupIcon,
   ClockIcon,
@@ -21,8 +24,6 @@ import {
   MapPinIcon,
   SignalIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface ActivityLog {
   id: string;
@@ -166,9 +167,9 @@ export default function AgentActivityPage() {
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm">
-          <a href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</a>
+          <Link href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</Link>
           <span className="text-gray-300">/</span>
-          <a href="/admin/agents" className="text-gray-500 hover:text-primary-600">Agent Management</a>
+          <Link href="/admin/agents" className="text-gray-500 hover:text-primary-600">Agent Management</Link>
           <span className="text-gray-300">/</span>
           <span className="text-primary-600 font-medium">{agent.name}</span>
         </nav>
@@ -275,7 +276,7 @@ export default function AgentActivityPage() {
                 onClick={() => {
                   if (!data?.logs) return;
                   const csv = ['Date,Type,Title,Detail']
-                    .concat(data.logs.map((l: any) =>
+                    .concat(data.logs.map((l: ActivityLog) =>
                       `"${new Date(l.createdAt).toLocaleString()}","${l.type}","${l.title}","${l.detail || ''}"`
                     ))
                     .join('\n');
@@ -324,7 +325,7 @@ export default function AgentActivityPage() {
                         <p className={`font-semibold ${
                           style === 'alert' ? 'text-red-600' : style === 'success' ? 'text-green-700' : 'text-gray-900'
                         }`}>
-                          {log.title}
+                          {formatActivityTitle(log.title)}
                         </p>
                         <span className={`text-xs shrink-0 ${
                           style === 'alert' ? 'text-red-400' : style === 'success' ? 'text-green-500' : 'text-gray-400'

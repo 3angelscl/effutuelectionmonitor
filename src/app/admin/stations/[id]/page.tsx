@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
-import { formatNumber } from '@/lib/utils';
+import { fetcher, formatNumber } from '@/lib/utils';
 import {
   UserIcon,
   PhoneIcon,
@@ -17,8 +18,6 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface StationDetail {
   station: {
@@ -50,6 +49,7 @@ interface StationDetail {
     firstName: string;
     lastName: string;
     age: number;
+    gender: string | null;
     photo: string | null;
     hasVoted: boolean;
   }[];
@@ -79,6 +79,10 @@ function getTimeAgo(dateStr: string): string {
   if (diffHrs < 24) return `${diffHrs} hrs ago`;
   const diffDays = Math.floor(diffHrs / 24);
   return `${diffDays} days ago`;
+}
+
+function getInitials(firstName: string, lastName: string): string {
+  return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase();
 }
 
 export default function StationDetailPage() {
@@ -131,9 +135,9 @@ export default function StationDetailPage() {
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm">
-          <a href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</a>
+          <Link href="/admin" className="text-gray-500 hover:text-primary-600">Dashboard</Link>
           <span className="text-gray-300">&gt;</span>
-          <a href="/admin/stations" className="text-gray-500 hover:text-primary-600">Polling Stations</a>
+          <Link href="/admin/stations" className="text-gray-500 hover:text-primary-600">Polling Stations</Link>
           <span className="text-gray-300">&gt;</span>
           <span className="text-gray-900 font-medium">{station.name}</span>
         </nav>
@@ -259,7 +263,9 @@ export default function StationDetailPage() {
                 <thead>
                   <tr className="border-y border-gray-200">
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Voter ID</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Photo</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Gender</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Age</th>
                     <th className="text-center py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Status</th>
                   </tr>
@@ -268,7 +274,33 @@ export default function StationDetailPage() {
                   {voters.map((v) => (
                     <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-3.5 px-6 font-mono text-xs text-gray-600">{v.voterId}</td>
-                      <td className="py-3.5 px-4 font-medium text-gray-900">{v.firstName} {v.lastName}</td>
+                      <td className="py-3.5 px-4">
+                        {v.photo ? (
+                          <img
+                            src={v.photo}
+                            alt={`${v.firstName} ${v.lastName}`}
+                            className="w-12 h-12 rounded-full object-cover border border-gray-200 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-200 shadow-sm">
+                            {getInitials(v.firstName, v.lastName) || <UserIcon className="h-4 w-4" />}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 font-medium text-gray-900">
+                        {v.firstName} {v.lastName}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          v.gender === 'Male'
+                            ? 'bg-blue-50 text-blue-700'
+                            : v.gender === 'Female'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {v.gender || 'Unknown'}
+                        </span>
+                      </td>
                       <td className="py-3.5 px-4 text-center text-gray-600">{v.age}</td>
                       <td className="py-3.5 px-6 text-center">
                         <Badge variant={v.hasVoted ? 'success' : 'neutral'} size="sm">
@@ -279,7 +311,7 @@ export default function StationDetailPage() {
                   ))}
                   {voters.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-12 text-center text-gray-400">
+                      <td colSpan={6} className="py-12 text-center text-gray-400">
                         {voterSearch ? 'No voters match your search' : 'No voters registered'}
                       </td>
                     </tr>

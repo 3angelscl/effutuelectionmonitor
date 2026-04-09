@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -14,8 +15,6 @@ import {
   CheckCircleIcon,
   FolderOpenIcon,
 } from '@heroicons/react/24/outline';
-
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 interface Incident {
   id: string;

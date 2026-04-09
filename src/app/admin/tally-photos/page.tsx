@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
@@ -9,7 +10,7 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { TrashIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
 
 interface TallyPhoto {
   id: string;
@@ -45,6 +46,7 @@ export default function TallyPhotosPage() {
   const [lightboxPhoto, setLightboxPhoto] = useState<TallyPhoto | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Build query params
   const photosParams = new URLSearchParams();
@@ -91,7 +93,7 @@ export default function TallyPhotosPage() {
         const res = await fetch(`/api/tally-photos?id=${id}`, { method: 'DELETE' });
         if (!res.ok) {
           const body = await res.json();
-          alert(body.error || 'Failed to delete photo');
+          setDeleteError(body.error || 'Failed to delete photo');
           return;
         }
         await mutatePhotos();
@@ -106,11 +108,19 @@ export default function TallyPhotosPage() {
 
   return (
     <div className="flex-1">
-      <AdminHeader title="Tally Photos" />
+      <AdminHeader title="Pink Sheets" />
 
       <div className="p-4 md:p-6 space-y-4 md:space-y-6">
+        {deleteError && (
+          <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+            <span>{deleteError}</span>
+            <button onClick={() => setDeleteError(null)} className="ml-3 text-red-400 hover:text-red-600">
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Tally Sheet Photos</h2>
+          <h2 className="text-xl font-bold text-gray-900">Pink Sheets</h2>
           <p className="text-sm text-gray-500 mt-1">
             {photosData?.total ?? 0} photo{photosData?.total !== 1 ? 's' : ''} uploaded by field agents
           </p>
