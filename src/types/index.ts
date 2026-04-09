@@ -67,9 +67,3 @@ export interface DashboardStats {
   favCandidate1: CandidateResult | null;
   favCandidate2: CandidateResult | null;
 }
-
-export interface VoterUploadResult {
-  successCount: number;
-  errorCount: number;
-  errors: string[];
-}
