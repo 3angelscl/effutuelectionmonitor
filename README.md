@@ -1,4 +1,11 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-app).
+
+## Database Setup
+
+This app uses Prisma with a Supabase-hosted Postgres database.
+
+- Set `DATABASE_URL` to the Supabase pooled session connection string for runtime.
+- Set `DIRECT_URL` to the Supabase direct connection string for Prisma migrations and CLI commands.
 
 ## Getting Started
 
