@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { invalidateLiveSummary } from '@/lib/live-summary';
 import bcrypt from 'bcryptjs';
-import * as XLSX from 'xlsx';
+import { readUploadedFile } from '@/lib/spreadsheet';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,32 +22,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    // Validate magic bytes: XLSX = ZIP (50 4B 03 04), legacy XLS = OLE2 (D0 CF 11 E0)
-    const isXlsx = buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
-    const isXls  = buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
-
     let rows: Record<string, unknown>[];
-
-    if (isXlsx || isXls) {
-      let workbook: XLSX.WorkBook;
-      try {
-        workbook = XLSX.read(buffer, { type: 'buffer' });
-      } catch {
-        return NextResponse.json(
-          { error: 'Could not parse spreadsheet. The file may be corrupted.' },
-          { status: 400 },
-        );
-      }
-      const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
-      rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
-    } else {
-      // Try CSV
-      const text = buffer.toString('utf-8');
-      const workbook = XLSX.read(text, { type: 'string' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
-      rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+    try {
+      rows = await readUploadedFile(file);
+    } catch {
+      return NextResponse.json(
+        { error: 'Could not parse spreadsheet. Please upload a valid .xlsx or .csv file.' },
+        { status: 400 },
+      );
     }
 
     if (rows.length === 0) {

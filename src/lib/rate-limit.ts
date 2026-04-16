@@ -18,6 +18,7 @@ interface RateLimiterOptions {
  */
 export function createRateLimiter(options: RateLimiterOptions) {
   const { windowMs, max } = options;
+  const isBuild = process.env.NEXT_PHASE === 'phase-production-build';
 
   if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
     const redis = Redis.fromEnv();
@@ -42,17 +43,18 @@ export function createRateLimiter(options: RateLimiterOptions) {
     };
   }
 
-  // Production requires Upstash — in-memory state is not shared across
-  // server replicas, so rate limits silently stop working under load.
-  if (process.env.NODE_ENV === 'production') {
+  // During `next build`, App Router route modules can be evaluated before
+  // deployment env vars are present. Fall back so type/data collection can
+  // complete, but keep the runtime guard for real production traffic.
+  if (process.env.NODE_ENV === 'production' && !isBuild) {
     throw new Error(
       'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production. ' +
       'The in-memory fallback is not safe for multi-instance deployments.',
     );
   }
 
-  // Development only: local in-memory sliding window
-  console.warn('[RateLimit] Upstash Redis credentials not found. Using in-memory fallback (development only).');
+  // Development and build-time fallback: local in-memory sliding window.
+  console.warn('[RateLimit] Upstash Redis credentials not found. Using in-memory fallback.');
   
   interface RateLimitEntry {
     count: number;

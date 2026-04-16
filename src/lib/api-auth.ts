@@ -7,7 +7,7 @@
  *   const { user } = await requireRole(['ADMIN', 'AGENT']); // admin or agent
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { validateCsrf } from '@/lib/csrf';
@@ -77,9 +77,9 @@ export async function requireRole(
  *   });
  */
 export function apiHandler(
-  handler: (request: Request) => Promise<Response>,
+  handler: (request: NextRequest) => Promise<Response>,
 ) {
-  return async (request: Request) => {
+  return async (request: NextRequest) => {
     try {
       // Validate CSRF for all state-changing requests
       const csrfError = validateCsrf(request);

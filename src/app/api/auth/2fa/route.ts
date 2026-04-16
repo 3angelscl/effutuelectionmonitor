@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { createRateLimiter } from '@/lib/rate-limit';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { logger } from '@/lib/logger';
+import { apiHandler, requireAuth } from '@/lib/api-auth';
+import { parseBody, twoFactorActionSchema } from '@/lib/validations';
 
 // 5 verification attempts per 5 minutes per email/user — prevents brute-force of 6-digit TOTP
 const twoFaLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 5 });
@@ -35,60 +35,51 @@ function lockedUntilDate(totalAttempts: number): Date | null {
 }
 
 // GET - Generate 2FA secret and QR code
-export async function GET() {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+export const GET = apiHandler(async () => {
+  const { user: sessionUser } = await requireAuth();
 
-    const userId = (session.user as { id: string }).id;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({ where: { id: sessionUser.id } });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    if (user.twoFactorEnabled) {
-      return NextResponse.json({ enabled: true });
-    }
-
-    // Reuse an existing pending secret so that refreshing the page does not
-    // invalidate a QR code the user has already scanned but not yet verified.
-    // Decrypt the stored secret (may be plaintext for legacy rows).
-    const existingSecret = user.twoFactorSecret ? decrypt(user.twoFactorSecret) : null;
-    const secret = existingSecret ?? generateSecret();
-
-    if (!existingSecret) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { twoFactorSecret: encrypt(secret) },
-      });
-    }
-
-    const otpAuthUrl = generateURI({ label: user.email, issuer: 'Effutu Election Monitor', secret });
-    const qrCode = await QRCode.toDataURL(otpAuthUrl);
-
-    return NextResponse.json({ secret, qrCode, enabled: false });
-  } catch (error) {
-    logger.error('2FA setup error', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Failed to setup 2FA' }, { status: 500 });
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
-}
+
+  if (user.twoFactorEnabled) {
+    return NextResponse.json({ enabled: true });
+  }
+
+  // Reuse an existing pending secret so that refreshing the page does not
+  // invalidate a QR code the user has already scanned but not yet verified.
+  // Decrypt the stored secret (may be plaintext for legacy rows).
+  const existingSecret = user.twoFactorSecret ? decrypt(user.twoFactorSecret) : null;
+  const secret = existingSecret ?? generateSecret();
+
+  if (!existingSecret) {
+    await prisma.user.update({
+      where: { id: sessionUser.id },
+      data: { twoFactorSecret: encrypt(secret) },
+    });
+  }
+
+  const otpAuthUrl = generateURI({ label: user.email, issuer: 'Effutu Election Monitor', secret });
+  const qrCode = await QRCode.toDataURL(otpAuthUrl);
+
+  return NextResponse.json({ secret, qrCode, enabled: false });
+});
 
 // POST - Verify and enable/disable 2FA, or verify during login
-export async function POST(request: NextRequest) {
+export const POST = apiHandler(async (request: NextRequest) => {
   try {
-    const body = await request.json();
-    const { action, code, email } = body;
+    const { action, code, email } = await parseBody(request, twoFactorActionSchema);
 
     if (action === 'verify-login') {
-      if (!email || !code) {
-        return NextResponse.json({ error: 'Email and code required' }, { status: 400 });
+      if (!email) {
+        return NextResponse.json({ error: 'Email is required' }, { status: 400 });
       }
+      const normalizedEmail = email.toLowerCase().trim();
 
       // Rate limit by email to prevent brute-force
-      const { success: rateLimitOk } = await twoFaLimiter.check(email.toLowerCase());
+      const { success: rateLimitOk } = await twoFaLimiter.check(normalizedEmail);
       if (!rateLimitOk) {
         return NextResponse.json(
           { error: 'Too many verification attempts. Try again in 5 minutes.' },
@@ -96,7 +87,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
       if (!user || !user.twoFactorSecret) {
         return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
       }
@@ -139,12 +130,8 @@ export async function POST(request: NextRequest) {
     }
 
     // All other actions require a session
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = (session.user as { id: string }).id;
+    const { user: sessionUser } = await requireAuth();
+    const userId = sessionUser.id;
     const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user || !user.twoFactorSecret) {
@@ -227,4 +214,4 @@ export async function POST(request: NextRequest) {
     logger.error('2FA verify error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Failed to verify 2FA' }, { status: 500 });
   }
-}
+});

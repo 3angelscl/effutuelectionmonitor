@@ -2,40 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
-import * as XLSX from 'xlsx';
+import bcrypt from 'bcryptjs';
+import { readUploadedFile } from '@/lib/spreadsheet';
 import { validateVoterUploadRows } from '@/lib/voter-upload';
 
 async function readUploadRows(file: File): Promise<Record<string, unknown>[]> {
-  const lowerName = file.name.toLowerCase();
-
-  if (lowerName.endsWith('.csv')) {
-    const text = await file.text();
-    if (!text.trim()) return [];
-    const workbook = XLSX.read(text, { type: 'string' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
-    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+  try {
+    return await readUploadedFile(file);
+  } catch {
+    throw new ApiError(400, 'Invalid file format. Please upload an .xlsx or .csv file.');
   }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-
-  // Validate magic bytes before handing to XLSX parser.
-  // XLSX is a ZIP (50 4B 03 04); legacy XLS is OLE2 (D0 CF 11 E0).
-  // Reject anything that doesn't match to prevent parser exploits.
-  const isXlsx = buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
-  const isXls  = buffer[0] === 0xd0 && buffer[1] === 0xcf && buffer[2] === 0x11 && buffer[3] === 0xe0;
-  if (!isXlsx && !isXls) {
-    throw new ApiError(400, 'Invalid file format. Please upload an .xlsx, .xls, or .csv file.');
-  }
-
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole('ADMIN');
     const isPreview = request.nextUrl.searchParams.get('preview') === 'true';
+    const isOverride = request.nextUrl.searchParams.get('override') === 'true';
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -48,6 +31,28 @@ export async function POST(request: NextRequest) {
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 });
+    }
+
+    // Verify password when performing an override import
+    if (isOverride && !isPreview) {
+      const password = formData.get('password') as string | null;
+      if (!password) {
+        return NextResponse.json({ error: 'Password confirmation required to override existing records' }, { status: 400 });
+      }
+
+      const adminUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { password: true },
+      });
+
+      if (!adminUser) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      const isValidPassword = await bcrypt.compare(password, adminUser.password);
+      if (!isValidPassword) {
+        return NextResponse.json({ error: 'Invalid password' }, { status: 403 });
+      }
     }
 
     let rows: Record<string, unknown>[];
@@ -75,27 +80,29 @@ export async function POST(request: NextRequest) {
       where: { deletedAt: null },
       select: { voterId: true, stationId: true },
     });
-    const validation = validateVoterUploadRows(rows, stations, existingVoters);
+    const validation = validateVoterUploadRows(rows, stations, existingVoters, isOverride);
 
     if (isPreview) {
       return NextResponse.json({
         fileName: file.name,
         totalRows: validation.totalRows,
         validRows: validation.validRowsCount,
+        overrideRows: validation.overrideRowsCount,
         invalidRows: validation.invalidRowsCount,
-        canImport: validation.invalidRowsCount === 0 && validation.validRowsCount > 0,
+        canImport: validation.invalidRowsCount === 0 && (validation.validRowsCount > 0 || validation.overrideRowsCount > 0),
         rows: validation.rows.slice(0, 25),
         errors: validation.errors.slice(0, 50),
       });
     }
 
-    if (validation.invalidRowsCount > 0 || validation.validRowsCount === 0) {
+    if (validation.invalidRowsCount > 0 || (validation.validRowsCount === 0 && validation.overrideRowsCount === 0)) {
       return NextResponse.json(
         {
           error: 'Validation failed. Please review the preview and fix the listed rows before uploading.',
           fileName: file.name,
           totalRows: validation.totalRows,
           validRows: validation.validRowsCount,
+          overrideRows: validation.overrideRowsCount,
           invalidRows: validation.invalidRowsCount,
           rows: validation.rows.slice(0, 25),
           errors: validation.errors.slice(0, 50),
@@ -104,18 +111,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await prisma.voter.createMany({
-      data: validation.validRows,
-    });
+    let insertedCount = 0;
+    let updatedCount = 0;
+
+    // Insert new voters
+    if (validation.validRows.length > 0) {
+      const result = await prisma.voter.createMany({
+        data: validation.validRows,
+      });
+      insertedCount = result.count;
+    }
+
+    // Upsert override rows (update existing records)
+    if (validation.overrideRows.length > 0) {
+      await Promise.all(
+        validation.overrideRows.map((row) =>
+          prisma.voter.upsert({
+            where: { voterId_stationId: { voterId: row.voterId, stationId: row.stationId } },
+            update: {
+              firstName: row.firstName,
+              lastName: row.lastName,
+              age: row.age,
+              gender: row.gender,
+              photo: row.photo,
+            },
+            create: row,
+          }),
+        ),
+      );
+      updatedCount = validation.overrideRows.length;
+    }
+
+    const successCount = insertedCount + updatedCount;
 
     await logAudit({
       userId: user.id,
       action: 'CREATE',
       entity: 'Voter',
       entityId: `bulk_upload_${Date.now()}`,
-      detail: `Bulk uploaded ${result.count} voters from file "${file.name}"`,
-      metadata: { 
-        successCount: result.count,
+      detail: `Bulk uploaded ${successCount} voters from file "${file.name}" (${insertedCount} new, ${updatedCount} overridden)`,
+      metadata: {
+        successCount,
+        insertedCount,
+        updatedCount,
         errorCount: 0,
         totalProcessed: validation.totalRows,
         fileName: file.name,
@@ -123,10 +161,13 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      successCount: result.count,
+      successCount,
+      insertedCount,
+      updatedCount,
       errorCount: 0,
       totalProcessed: validation.totalRows,
       validRows: validation.validRowsCount,
+      overrideRows: validation.overrideRowsCount,
       invalidRows: 0,
       canImport: true,
     });

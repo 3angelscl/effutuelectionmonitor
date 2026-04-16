@@ -3,7 +3,7 @@ import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { invalidateLiveSummary } from '@/lib/live-summary';
-import * as XLSX from 'xlsx';
+import { readUploadedFile } from '@/lib/spreadsheet';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,40 +21,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 });
     }
 
-    const fileName = file.name.toLowerCase();
-    const isCSV = fileName.endsWith('.csv');
-    const isXLSX = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
-
-    if (!isCSV && !isXLSX) {
-      return NextResponse.json({ error: 'Only CSV or XLSX files are supported' }, { status: 400 });
-    }
-
     type RowRecord = Record<string, unknown>;
     let rows: RowRecord[] = [];
-
-    if (isXLSX) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const workbook = XLSX.read(buffer, { type: 'buffer' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      rows = XLSX.utils.sheet_to_json<RowRecord>(sheet);
-    } else {
-      // CSV parsing
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      if (lines.length < 2) {
-        return NextResponse.json({ error: 'File is empty or has no data rows' }, { status: 400 });
-      }
-
-      const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
-        const row: RowRecord = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] ?? '';
-        });
-        rows.push(row);
-      }
+    try {
+      rows = await readUploadedFile(file);
+    } catch {
+      return NextResponse.json({ error: 'Only CSV or XLSX files are supported' }, { status: 400 });
     }
 
     if (rows.length === 0) {

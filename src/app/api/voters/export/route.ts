@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
-import * as XLSX from 'xlsx';
+import { buildCsv, buildXlsx } from '@/lib/spreadsheet';
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,16 +77,9 @@ export async function GET(request: NextRequest) {
       'Voted At': v.turnout?.[0]?.votedAt ? v.turnout[0].votedAt.toISOString() : '',
     }));
 
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Voters');
-
     if (format === 'xlsx') {
-      const buffer = XLSX.write(workbook, {
-        type: 'buffer',
-        bookType: 'xlsx',
-      });
-      return new NextResponse(buffer, {
+      const buffer = await buildXlsx(data, 'Voters');
+      return new NextResponse(new Uint8Array(buffer), {
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           'Content-Disposition': 'attachment; filename="voters.xlsx"',
@@ -94,7 +87,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    const csv = buildCsv(data);
     return new NextResponse(csv, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

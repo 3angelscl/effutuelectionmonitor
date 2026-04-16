@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import { getResultsForExport } from '@/services/election-results';
-import * as XLSX from 'xlsx';
+import { buildCsv, buildXlsx } from '@/lib/spreadsheet';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,18 +17,11 @@ export async function GET(request: NextRequest) {
       candidateId: candidateId || null,
     });
 
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Results');
-
-    const buffer = XLSX.write(workbook, {
-      type: 'buffer',
-      bookType: format === 'xlsx' ? 'xlsx' : 'csv',
-    });
-
     const contentType = format === 'xlsx'
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       : 'text/csv';
+    const exportRows = rows as unknown as Record<string, unknown>[];
+    const body = format === 'xlsx' ? await buildXlsx(exportRows, 'Results') : buildCsv(exportRows);
 
     const headers: Record<string, string> = {
       'Content-Type': contentType,
@@ -42,7 +35,8 @@ export async function GET(request: NextRequest) {
       headers['X-Export-Row-Limit'] = String(rowLimit);
     }
 
-    return new NextResponse(buffer, { headers });
+    const responseBody = typeof body === 'string' ? body : new Uint8Array(body);
+    return new NextResponse(responseBody, { headers });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();
     console.error('Export results error:', error);

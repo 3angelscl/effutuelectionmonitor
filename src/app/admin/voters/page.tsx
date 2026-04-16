@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { Suspense, useState, useCallback, useRef, useEffect } from 'react';
 import { fetcher } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
@@ -64,7 +64,8 @@ interface UploadPreviewRow {
   psCode: string;
   photo: string | null;
   stationName: string | null;
-  status: 'valid' | 'error';
+  status: 'valid' | 'override' | 'error';
+  isOverride: boolean;
   errors: string[];
 }
 
@@ -72,13 +73,34 @@ interface UploadPreviewResult {
   fileName: string;
   totalRows: number;
   validRows: number;
+  overrideRows: number;
   invalidRows: number;
   canImport: boolean;
   rows: UploadPreviewRow[];
   errors: string[];
 }
 
-export default function VoterManagement() {
+export default function VoterManagementPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex-1">
+          <AdminHeader title="Voter Register" />
+          <div className="p-4 md:p-6">
+            <div className="animate-pulse space-y-4">
+              <div className="h-8 bg-gray-200 rounded w-64" />
+              <div className="h-96 bg-gray-100 rounded-xl" />
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <VoterManagementContent />
+    </Suspense>
+  );
+}
+
+function VoterManagementContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const userRole = (session?.user as { role?: string })?.role;
@@ -106,6 +128,9 @@ export default function VoterManagement() {
     errors: string[];
   } | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [uploadOverride, setUploadOverride] = useState(false);
+  const [overridePassword, setOverridePassword] = useState('');
+  const [overridePasswordError, setOverridePasswordError] = useState('');
 
   // Add Modal state
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -221,6 +246,9 @@ export default function VoterManagement() {
     setUploadError('');
     setUploadPreviewing(false);
     setUploading(false);
+    setUploadOverride(false);
+    setOverridePassword('');
+    setOverridePasswordError('');
     if (uploadInputRef.current) uploadInputRef.current.value = '';
   }, []);
 
@@ -256,7 +284,10 @@ export default function VoterManagement() {
       const formData = new FormData();
       formData.append('file', uploadFile);
 
-      const res = await fetch('/api/voters/upload?preview=true', {
+      const previewUrl = uploadOverride
+        ? '/api/voters/upload?preview=true&override=true'
+        : '/api/voters/upload?preview=true';
+      const res = await fetch(previewUrl, {
         method: 'POST',
         body: formData,
       });
@@ -267,6 +298,7 @@ export default function VoterManagement() {
           fileName: result.fileName || uploadFile.name,
           totalRows: result.totalRows || 0,
           validRows: result.validRows || 0,
+          overrideRows: result.overrideRows || 0,
           invalidRows: result.invalidRows || 0,
           canImport: false,
           rows: Array.isArray(result.rows) ? result.rows : [],
@@ -280,6 +312,7 @@ export default function VoterManagement() {
         fileName: result.fileName || uploadFile.name,
         totalRows: result.totalRows || 0,
         validRows: result.validRows || 0,
+        overrideRows: result.overrideRows || 0,
         invalidRows: result.invalidRows || 0,
         canImport: Boolean(result.canImport),
         rows: Array.isArray(result.rows) ? result.rows : [],
@@ -301,7 +334,12 @@ export default function VoterManagement() {
       setUploadError('Please resolve the validation errors before uploading.');
       return;
     }
+    if (uploadOverride && !overridePassword) {
+      setOverridePasswordError('Enter your admin password to confirm override');
+      return;
+    }
 
+    setOverridePasswordError('');
     setUploading(true);
     setUploadResult(null);
     setUploadError('');
@@ -309,19 +347,26 @@ export default function VoterManagement() {
     try {
       const formData = new FormData();
       formData.append('file', uploadFile);
+      if (uploadOverride) formData.append('password', overridePassword);
 
-      const res = await fetch('/api/voters/upload', {
+      const importUrl = uploadOverride ? '/api/voters/upload?override=true' : '/api/voters/upload';
+      const res = await fetch(importUrl, {
         method: 'POST',
         body: formData,
       });
       const result = await res.json();
 
       if (!res.ok) {
+        if (res.status === 403) {
+          setOverridePasswordError('Incorrect password. Please try again.');
+          return;
+        }
         if (res.status === 422 && Array.isArray(result.rows)) {
           setUploadPreview({
             fileName: result.fileName || uploadFile.name,
             totalRows: result.totalRows || 0,
             validRows: result.validRows || 0,
+            overrideRows: result.overrideRows || 0,
             invalidRows: result.invalidRows || 0,
             canImport: false,
             rows: result.rows,
@@ -338,7 +383,15 @@ export default function VoterManagement() {
         errors: Array.isArray(result.errors) ? result.errors : [],
       });
       mutate();
-      toast.success('Voter register imported successfully');
+      const updatedCount: number = result.updatedCount || 0;
+      const insertedCount: number = result.insertedCount || 0;
+      if (updatedCount > 0 && insertedCount > 0) {
+        toast.success(`${insertedCount} voters imported, ${updatedCount} overridden`);
+      } else if (updatedCount > 0) {
+        toast.success(`${updatedCount} voters overridden successfully`);
+      } else {
+        toast.success('Voter register imported successfully');
+      }
     } catch {
       setUploadResult({ successCount: 0, errorCount: 1, errors: ['An unexpected error occurred during upload.'] });
     } finally {
@@ -1078,8 +1131,12 @@ export default function VoterManagement() {
           <Input
             label="Voter ID"
             value={addForm.voterId}
-            onChange={(e) => setAddForm((f) => ({ ...f, voterId: e.target.value }))}
-            placeholder="e.g., 2345678901"
+            onChange={(e) => setAddForm((f) => ({ ...f, voterId: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+            placeholder="10-digit voter ID"
+            inputMode="numeric"
+            maxLength={10}
+            pattern="\d{10}"
+            title="Voter ID must be exactly 10 digits"
             required
           />
           
@@ -1213,6 +1270,50 @@ export default function VoterManagement() {
             )}
           </div>
 
+          {/* Override toggle */}
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={uploadOverride}
+              onChange={(e) => {
+                setUploadOverride(e.target.checked);
+                setUploadPreview(null);
+                setOverridePassword('');
+                setOverridePasswordError('');
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-medium">Override existing records</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Matching voter IDs will be updated with the values from the file. Requires your admin password.
+              </span>
+            </span>
+          </label>
+
+          {/* Password field shown when override is enabled */}
+          {uploadOverride && (
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                Admin password to confirm override
+              </label>
+              <input
+                type="password"
+                value={overridePassword}
+                onChange={(e) => { setOverridePassword(e.target.value); setOverridePasswordError(''); }}
+                placeholder="Your admin password"
+                className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 ${
+                  overridePasswordError
+                    ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
+                    : 'border-gray-200 focus:ring-primary-500/20 focus:border-primary-500'
+                }`}
+              />
+              {overridePasswordError && (
+                <p className="text-xs text-red-600 mt-1">{overridePasswordError}</p>
+              )}
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-3">
             <Button
               type="button"
@@ -1243,9 +1344,9 @@ export default function VoterManagement() {
 
           {uploadPreview && (
             <div className="space-y-4">
-              <div className={`grid gap-3 md:grid-cols-4 rounded-lg border p-4 ${
+              <div className={`grid gap-3 rounded-lg border p-4 ${
                 uploadPreview.invalidRows > 0 ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'
-              }`}>
+              } ${uploadPreview.overrideRows > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">File</p>
                   <p className="text-sm font-medium text-gray-900 truncate">{uploadPreview.fileName}</p>
@@ -1255,9 +1356,15 @@ export default function VoterManagement() {
                   <p className="text-sm font-semibold text-gray-900">{uploadPreview.totalRows.toLocaleString()}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Valid rows</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">New rows</p>
                   <p className="text-sm font-semibold text-green-700">{uploadPreview.validRows.toLocaleString()}</p>
                 </div>
+                {uploadPreview.overrideRows > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Will override</p>
+                    <p className="text-sm font-semibold text-orange-600">{uploadPreview.overrideRows.toLocaleString()}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Invalid rows</p>
                   <p className="text-sm font-semibold text-amber-700">{uploadPreview.invalidRows.toLocaleString()}</p>
@@ -1307,9 +1414,13 @@ export default function VoterManagement() {
                         </td>
                         <td className="px-4 py-3 text-gray-600">{row.photo ? 'Provided' : 'Not provided'}</td>
                         <td className="px-4 py-3">
-                          <Badge variant={row.status === 'valid' ? 'success' : 'neutral'} size="sm">
-                            {row.status === 'valid' ? 'Valid' : 'Needs fix'}
-                          </Badge>
+                          {row.status === 'valid' && <Badge variant="success" size="sm">New</Badge>}
+                          {row.status === 'override' && (
+                            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-orange-50 text-orange-700">
+                              Override
+                            </span>
+                          )}
+                          {row.status === 'error' && <Badge variant="neutral" size="sm">Needs fix</Badge>}
                           {row.errors.length > 0 && (
                             <p className="mt-1 text-xs text-red-600">{row.errors.join('; ')}</p>
                           )}
@@ -1451,8 +1562,12 @@ export default function VoterManagement() {
           <Input
             label="Voter ID"
             value={editForm.voterId}
-            onChange={(e) => setEditForm((f) => ({ ...f, voterId: e.target.value }))}
+            onChange={(e) => setEditForm((f) => ({ ...f, voterId: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
             placeholder="10-digit voter ID"
+            inputMode="numeric"
+            maxLength={10}
+            pattern="\d{10}"
+            title="Voter ID must be exactly 10 digits"
             required
           />
           <div className="grid grid-cols-2 gap-4">
@@ -1575,4 +1690,3 @@ export default function VoterManagement() {
     </div>
   );
 }
-
