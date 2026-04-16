@@ -179,7 +179,7 @@ export default function SettingsPage() {
         setIsUploading(false);
       }
 
-      const body: Record<string, string> = { name };
+      const body: Record<string, string> = { name, email };
       body.phone = phone;
       if (photoUrl) body.photo = photoUrl;
 
@@ -196,7 +196,7 @@ export default function SettingsPage() {
       }
 
       setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
-      await update({ photo: photoUrl, name });
+      await update({ photo: photoUrl, name, email });
     } catch {
       setProfileMsg({ type: 'error', text: 'An error occurred while saving your profile.' });
     } finally {
@@ -434,7 +434,14 @@ export default function SettingsPage() {
                           required
                           disabled={loadingProfile}
                         />
-                        <Input label="Email Address" value={email} disabled />
+                        <Input
+                          label="Email Address"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          disabled={loadingProfile}
+                        />
                       </div>
 
                       <Input

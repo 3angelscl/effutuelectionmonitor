@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: resetRecord.userId },
-        data: { password: hashedPassword },
+        data: {
+          password: hashedPassword,
+          sessionVersion: { increment: 1 },
+        },
       }),
       prisma.passwordReset.update({
         where: { id: resetRecord.id },

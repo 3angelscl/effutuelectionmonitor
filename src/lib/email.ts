@@ -165,6 +165,57 @@ export async function sendBroadcastEmail(opts: {
   });
 }
 
+/** Email a generated PDF report as an attachment to a list of recipients. */
+export async function sendReportEmail(opts: {
+  recipients: string[];
+  reportType: 'summary' | 'turnout' | 'results';
+  electionName: string;
+  senderName: string;
+  pdfBuffer: Buffer;
+  fileName: string;
+}) {
+  if (opts.recipients.length === 0) return;
+
+  const typeLabel =
+    opts.reportType === 'summary'  ? 'Summary Report' :
+    opts.reportType === 'turnout'  ? 'Turnout Report'  : 'Results Report';
+
+  const transport = getTransport();
+  const from = `"${process.env.EMAIL_FROM_NAME ?? 'Effutu Election Monitor'}" <${process.env.EMAIL_FROM ?? process.env.EMAIL_USER ?? 'noreply@effutu.gov.gh'}>`;
+
+  if (!transport) {
+    console.log('[Email] Not configured. Would have sent report email:');
+    console.log(`  To:      ${opts.recipients.join(', ')}`);
+    console.log(`  Subject: ${typeLabel} — ${opts.electionName}`);
+    console.log(`  Attach:  ${opts.fileName} (${opts.pdfBuffer.byteLength} bytes)`);
+    return;
+  }
+
+  const html = wrapHtml(
+    `${typeLabel} — ${opts.electionName}`,
+    `<h2>${typeLabel}</h2>
+    <p>Please find attached the <strong>${typeLabel}</strong> for <strong>${opts.electionName}</strong>.</p>
+    <div class="detail-row"><span class="detail-label">Report type</span><span class="detail-value">${typeLabel}</span></div>
+    <div class="detail-row"><span class="detail-label">Election</span><span class="detail-value">${opts.electionName}</span></div>
+    <div class="detail-row"><span class="detail-label">Sent by</span><span class="detail-value">${opts.senderName}</span></div>
+    <p style="margin-top:16px;font-size:13px;color:#6b7280;">This report was generated automatically by the Effutu Election Monitoring System.</p>`,
+  );
+
+  await transport.sendMail({
+    from,
+    to: opts.recipients,
+    subject: `[Election Report] ${typeLabel} — ${opts.electionName}`,
+    html,
+    attachments: [
+      {
+        filename: opts.fileName,
+        content: opts.pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
+  });
+}
+
 /** Send a password reset link. */
 export async function sendPasswordResetEmail(opts: {
   to: string;

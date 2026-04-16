@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
-import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
+import { requireAuth, requireRole, apiHandler } from '@/lib/api-auth';
 import { invalidateLiveSummary } from '@/lib/live-summary';
 import { parseBody, electionCreateSchema, electionUpdateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
@@ -18,6 +18,7 @@ export const GET = apiHandler(async () => {
       },
     },
   });
+
   return NextResponse.json(elections);
 });
 
@@ -54,96 +55,86 @@ export const POST = apiHandler(async (request: Request) => {
   return NextResponse.json(election, { status: 201 });
 });
 
-export async function PUT(request: NextRequest) {
+export const PUT = apiHandler(async (request: NextRequest) => {
+  const { user } = await requireRole(['ADMIN', 'OFFICER']);
+
+  let data;
   try {
-    const { user } = await requireRole(['ADMIN', 'OFFICER']);
-
-    let data;
-    try {
-      data = await parseBody(request, electionUpdateSchema);
-    } catch (error) {
-      if (error instanceof ValidationError) return error.toResponse();
-      throw error;
-    }
-
-    // Keep isActive in sync with status so both fields are never contradictory
-    const isActiveUpdate =
-      data.status === 'ONGOING' ? { isActive: true } :
-      data.status === 'COMPLETED' || data.status === 'UPCOMING' ? { isActive: false } :
-      {};
-
-    const election = await prisma.election.update({
-      where: { id: data.id },
-      data: {
-        ...(data.name && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
-        ...(data.date !== undefined && { date: data.date ? new Date(data.date) : null }),
-        ...(data.status && { status: data.status }),
-        ...isActiveUpdate,
-        ...(data.favCandidate1Id !== undefined && { favCandidate1Id: data.favCandidate1Id }),
-        ...(data.favCandidate2Id !== undefined && { favCandidate2Id: data.favCandidate2Id }),
-      },
-    });
-
-    await logAudit({
-      userId: user.id,
-      action: 'UPDATE',
-      entity: 'Election',
-      entityId: data.id,
-      detail: `Updated election "${election.name}"${data.status ? ` — status: ${data.status}` : ''}`,
-      metadata: { name: data.name, status: data.status },
-    });
-
-    await invalidateLiveSummary();
-    broadcastEvent('election:changed', { electionId: data.id, action: 'updated' });
-
-    return NextResponse.json(election);
+    data = await parseBody(request, electionUpdateSchema);
   } catch (error) {
-    if (error instanceof ApiError) return error.toResponse();
-    console.error('Update election error:', error);
-    return NextResponse.json({ error: 'Failed to update election' }, { status: 500 });
+    if (error instanceof ValidationError) return error.toResponse();
+    throw error;
   }
-}
 
-export async function DELETE(request: NextRequest) {
-  try {
-    const { user } = await requireRole(['ADMIN', 'OFFICER']);
+  const isActiveUpdate =
+    data.status === 'ONGOING' ? { isActive: true } :
+    data.status === 'COMPLETED' || data.status === 'UPCOMING' ? { isActive: false } :
+    {};
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+  const election = await prisma.election.update({
+    where: { id: data.id },
+    data: {
+      ...(data.name && { name: data.name }),
+      ...(data.description !== undefined && { description: data.description }),
+      ...(data.date !== undefined && { date: data.date ? new Date(data.date) : null }),
+      ...(data.status && { status: data.status }),
+      ...isActiveUpdate,
+      ...(data.favCandidate1Id !== undefined && { favCandidate1Id: data.favCandidate1Id }),
+      ...(data.favCandidate2Id !== undefined && { favCandidate2Id: data.favCandidate2Id }),
+    },
+  });
 
-    if (!id) {
-      return NextResponse.json({ error: 'Election ID required' }, { status: 400 });
-    }
+  await logAudit({
+    userId: user.id,
+    action: 'UPDATE',
+    entity: 'Election',
+    entityId: data.id,
+    detail: `Updated election "${election.name}"${data.status ? ` - status: ${data.status}` : ''}`,
+    metadata: { name: data.name, status: data.status },
+  });
 
-    const targetElection = await prisma.election.findUnique({ where: { id }, select: { name: true, isActive: true } });
+  await invalidateLiveSummary();
+  broadcastEvent('election:changed', { electionId: data.id, action: 'updated' });
 
-    if (targetElection?.isActive) {
-      return NextResponse.json({ error: 'Cannot delete the active election. Deactivate it first.' }, { status: 400 });
-    }
+  return NextResponse.json(election);
+});
 
-    await prisma.$transaction([
-      prisma.electionResult.deleteMany({ where: { electionId: id } }),
-      prisma.voterTurnout.deleteMany({ where: { electionId: id } }),
-      prisma.candidate.deleteMany({ where: { electionId: id } }),
-      prisma.election.delete({ where: { id } }),
-    ]);
+export const DELETE = apiHandler(async (request: NextRequest) => {
+  const { user } = await requireRole(['ADMIN', 'OFFICER']);
 
-    await logAudit({
-      userId: user.id,
-      action: 'DELETE',
-      entity: 'Election',
-      entityId: id,
-      detail: `Deleted election "${targetElection?.name}"`,
-    });
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
 
-    await invalidateLiveSummary();
-    broadcastEvent('election:changed', { electionId: id, action: 'deleted' });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    if (error instanceof ApiError) return error.toResponse();
-    console.error('Delete election error:', error);
-    return NextResponse.json({ error: 'Failed to delete election' }, { status: 500 });
+  if (!id) {
+    return NextResponse.json({ error: 'Election ID required' }, { status: 400 });
   }
-}
+
+  const targetElection = await prisma.election.findUnique({
+    where: { id },
+    select: { name: true, isActive: true },
+  });
+
+  if (targetElection?.isActive) {
+    return NextResponse.json({ error: 'Cannot delete the active election. Deactivate it first.' }, { status: 400 });
+  }
+
+  await prisma.$transaction([
+    prisma.electionResult.deleteMany({ where: { electionId: id } }),
+    prisma.voterTurnout.deleteMany({ where: { electionId: id } }),
+    prisma.candidate.deleteMany({ where: { electionId: id } }),
+    prisma.election.delete({ where: { id } }),
+  ]);
+
+  await logAudit({
+    userId: user.id,
+    action: 'DELETE',
+    entity: 'Election',
+    entityId: id,
+    detail: `Deleted election "${targetElection?.name}"`,
+  });
+
+  await invalidateLiveSummary();
+  broadcastEvent('election:changed', { electionId: id, action: 'deleted' });
+
+  return NextResponse.json({ success: true });
+});

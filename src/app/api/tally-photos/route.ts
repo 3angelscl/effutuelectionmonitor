@@ -3,8 +3,7 @@ import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { logAudit } from '@/lib/audit';
 import { broadcastEvent } from '@/lib/events';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { deleteStoredFile, storeFile } from '@/lib/file-storage';
 
 export async function GET(request: NextRequest) {
   try {
@@ -124,12 +123,12 @@ export async function POST(request: NextRequest) {
     const allowedExts = ['jpg', 'jpeg', 'png'];
     const ext = allowedExts.includes(rawExt) ? rawExt : 'jpg';
     const filename = `tally-${station.psCode}-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'tally');
-
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, filename), buffer);
-
-    const photoUrl = `/uploads/tally/${filename}`;
+    const photoUrl = await storeFile({
+      subfolder: 'tally',
+      filename,
+      buffer,
+      contentType: file.type || undefined,
+    });
 
     const photo = await prisma.tallyPhoto.create({
       data: {
@@ -183,7 +182,12 @@ export async function DELETE(request: NextRequest) {
 
     const photo = await prisma.tallyPhoto.findUnique({
       where: { id },
-      select: { id: true, stationId: true, station: { select: { psCode: true } } },
+      select: {
+        id: true,
+        stationId: true,
+        photoUrl: true,
+        station: { select: { psCode: true } },
+      },
     });
 
     if (!photo) {
@@ -191,6 +195,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.tallyPhoto.delete({ where: { id } });
+    await deleteStoredFile(photo.photoUrl);
 
     await logAudit({
       userId: user.id,

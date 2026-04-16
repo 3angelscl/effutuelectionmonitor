@@ -3,6 +3,7 @@ import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 import { broadcastEvent } from '@/lib/events';
 import { cancelAutoCheckout } from '@/lib/auto-checkout';
+import { notifyAdmins } from '@/lib/notify';
 
 export async function GET() {
   try {
@@ -103,6 +104,19 @@ export async function POST(request: NextRequest) {
         metadata: JSON.stringify({ latitude, longitude, stationId: station.id }),
       },
     });
+
+    // Persist notification + push to admins (fire-and-forget)
+    notifyAdmins({
+      type: 'SYSTEM',
+      title: `Agent ${type === 'CHECK_IN' ? 'checked in' : 'checked out'} — ${station.psCode}`,
+      message: `${user.name} ${type === 'CHECK_IN' ? 'arrived at' : 'left'} ${station.name}${distanceWarning ? ` (${distanceWarning})` : ''}`,
+      link: '/admin/agents',
+      push: {
+        title: `${type === 'CHECK_IN' ? '📍' : '🚪'} ${user.name}`,
+        body: `${type === 'CHECK_IN' ? 'Checked in at' : 'Checked out from'} ${station.psCode} — ${station.name}`,
+        url: '/admin/agents',
+      },
+    }).catch(() => {});
 
     // Broadcast check-in event to admins
     broadcastEvent('agent:checkin', {

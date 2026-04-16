@@ -4,6 +4,7 @@ import { requireAuth, requireRole, ApiError, apiHandler } from '@/lib/api-auth';
 import { parseBody, incidentCreateSchema, ValidationError } from '@/lib/validations';
 import { broadcastEvent } from '@/lib/events';
 import { createRateLimiter } from '@/lib/rate-limit';
+import { notifyAdmins } from '@/lib/notify';
 
 // 10 incident reports per 5 minutes per user
 const incidentRateLimiter = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 10 });
@@ -93,6 +94,19 @@ export const POST = apiHandler(async (request: Request) => {
       station: { select: { id: true, name: true, psCode: true } },
     },
   });
+
+  // Persist notification + push to admins (fire-and-forget)
+  notifyAdmins({
+    type: 'ALERT',
+    title: `Incident reported — ${station.psCode}`,
+    message: `${user.name}: [${data.severity}] ${data.title}`,
+    link: '/admin/incidents',
+    push: {
+      title: `⚠️ Incident: ${station.psCode}`,
+      body: `${data.severity} — ${data.title}`,
+      url: '/admin/incidents',
+    },
+  }).catch(() => {});
 
   // Broadcast to admins
   broadcastEvent('incident:created', {

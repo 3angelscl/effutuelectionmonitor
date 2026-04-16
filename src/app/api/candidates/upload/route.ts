@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { storeFile } from '@/lib/file-storage';
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,13 +38,12 @@ export async function POST(request: NextRequest) {
     const allowedExts = ['jpg', 'jpeg', 'png'];
     const ext = allowedExts.includes(rawExt) ? rawExt : 'jpg';
     const filename = `candidate-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'candidates');
-    const filePath = path.join(uploadDir, filename);
-
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(filePath, buffer);
-
-    const url = `/uploads/candidates/${filename}`;
+    const url = await storeFile({
+      subfolder: 'candidates',
+      filename,
+      buffer,
+      contentType: file.type || undefined,
+    });
     return NextResponse.json({ url });
   } catch (error) {
     if (error instanceof ApiError) return error.toResponse();

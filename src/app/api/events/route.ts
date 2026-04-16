@@ -18,12 +18,12 @@ import {
 } from '@/lib/auto-checkout';
 import { addConnection, removeConnection } from '@/lib/presence';
 
-// Run startup cleanup once — handles stale CHECK_INs from previous server restarts
+// Run startup cleanup once - handles stale CHECK_INs from previous server restarts
 checkoutStaleAgentsOnStartup();
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -42,9 +42,12 @@ export async function GET() {
     cancelAutoCheckout(user.id);
   }
 
+  let cleanup = () => {};
+
   const stream = new ReadableStream({
     start(controller) {
       let alive = true;
+      let cleanedUp = false;
 
       const send = (data: unknown) => {
         if (!alive) return;
@@ -55,7 +58,6 @@ export async function GET() {
         }
       };
 
-      // ── Subscribe to event bus ────────────────────────────
       const unsubscribe = eventBus.subscribe((event: ServerEvent) => {
         if (!alive) return;
 
@@ -68,13 +70,12 @@ export async function GET() {
         send({ type: event.type, payload: event.payload, timestamp: event.timestamp });
       });
 
-      // ── Heartbeat ──────────────────────────────────────────
       // Sends a lightweight ping every 25s to keep the TCP connection alive.
       // Notification counts are pushed via the event bus (notification:new)
       // rather than polled here, so no DB query is needed per heartbeat.
       const heartbeat = setInterval(() => {
         if (!alive) {
-          clearInterval(heartbeat);
+          cleanup();
           return;
         }
         send({ type: 'heartbeat', timestamp: new Date().toISOString() });
@@ -83,23 +84,29 @@ export async function GET() {
       // Send initial connection event
       send({ type: 'connected', userId: user.id, role: user.role, timestamp: new Date().toISOString() });
 
+      const handleAbort = () => {
+        cleanup();
+      };
+
       // Periodic check to detect disconnected clients and clean up resources.
       // When a send() fails (client disconnected), alive is set to false,
       // and this interval detects it and runs cleanup.
       const checkAlive = setInterval(() => {
         if (!alive) {
-          clearInterval(checkAlive);
-          clearInterval(heartbeat);
-          unsubscribe();
+          cleanup();
         }
       }, 30000);
 
       // Cleanup all timers and subscriptions
-      const cleanup = () => {
+      cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+
         alive = false;
         clearInterval(heartbeat);
         clearInterval(checkAlive);
         unsubscribe();
+        request.signal.removeEventListener('abort', handleAbort);
 
         // Decrement connection count; schedule auto-checkout (agents only)
         // when the last tab closes.
@@ -109,13 +116,10 @@ export async function GET() {
         }
       };
 
-      // ReadableStream cancel handler — called when the client disconnects
-      controller.close = new Proxy(controller.close, {
-        apply(target, thisArg, args) {
-          cleanup();
-          return Reflect.apply(target, thisArg, args);
-        },
-      });
+      request.signal.addEventListener('abort', handleAbort, { once: true });
+    },
+    cancel() {
+      cleanup();
     },
   });
 

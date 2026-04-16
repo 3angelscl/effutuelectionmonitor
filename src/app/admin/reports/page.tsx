@@ -1,19 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetcher } from '@/lib/utils';
 import useSWR from 'swr';
 import AdminHeader from '@/components/layout/AdminHeader';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
+import { toast } from 'sonner';
 import {
   ArrowDownTrayIcon,
   ChartBarIcon,
   CheckCircleIcon,
   ClipboardDocumentListIcon,
   DocumentTextIcon,
+  EnvelopeIcon,
   FunnelIcon,
   UserGroupIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 interface Election {
@@ -111,6 +115,65 @@ export default function ReportsPage() {
 
   const openExport = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // ── Email report modal ─────────────────────────────────────────────────────
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailReportType, setEmailReportType] = useState<'summary' | 'turnout' | 'results'>('summary');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailRecipients, setEmailRecipients] = useState<string[]>([]);
+  const [emailSending, setEmailSending] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  const openEmailModal = (type: 'summary' | 'turnout' | 'results') => {
+    setEmailReportType(type);
+    setEmailRecipients([]);
+    setEmailInput('');
+    setEmailModalOpen(true);
+  };
+
+  const addEmailRecipient = () => {
+    const trimmed = emailInput.trim().toLowerCase();
+    if (!trimmed) return;
+    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+    if (!isValid) { toast.error('Invalid email address'); return; }
+    if (emailRecipients.includes(trimmed)) { toast.error('Already added'); return; }
+    if (emailRecipients.length >= 20) { toast.error('Maximum 20 recipients'); return; }
+    setEmailRecipients((prev) => [...prev, trimmed]);
+    setEmailInput('');
+    emailInputRef.current?.focus();
+  };
+
+  const removeEmailRecipient = (email: string) => {
+    setEmailRecipients((prev) => prev.filter((e) => e !== email));
+  };
+
+  const handleEmailKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addEmailRecipient(); }
+  };
+
+  const handleSendReport = async () => {
+    if (emailRecipients.length === 0) { toast.error('Add at least one recipient'); return; }
+    setEmailSending(true);
+    try {
+      const res = await fetch('/api/reports/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: emailReportType,
+          electionId: selectedElectionId || undefined,
+          recipients: emailRecipients,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Failed to send report'); return; }
+      toast.success(data.message || 'Report sent successfully');
+      setEmailModalOpen(false);
+    } catch {
+      toast.error('An error occurred. Please try again.');
+    } finally {
+      setEmailSending(false);
+    }
   };
 
   const clearFilters = () => {
@@ -440,21 +503,112 @@ export default function ReportsPage() {
                   Election: <span className="font-medium text-gray-900">{selectedElection?.name || 'Active election'}</span>
                 </div>
 
-                <div className="mt-auto pt-5">
+                <div className="mt-auto pt-5 flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full justify-center"
+                    className="flex-1 justify-center"
                     icon={<ArrowDownTrayIcon className="h-4 w-4" />}
                     onClick={() => openExport(buildPdfUrl(report.type))}
                   >
-                    Download PDF
+                    Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 justify-center"
+                    icon={<EnvelopeIcon className="h-4 w-4" />}
+                    onClick={() => openEmailModal(report.type)}
+                  >
+                    Email
                   </Button>
                 </div>
               </div>
             </Card>
           ))}
         </div>
+
+        {/* Email Report Modal */}
+        <Modal
+          isOpen={emailModalOpen}
+          onClose={() => setEmailModalOpen(false)}
+          title={`Email ${emailReportType === 'summary' ? 'Summary' : emailReportType === 'turnout' ? 'Turnout' : 'Results'} Report`}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              The PDF report will be generated and emailed as an attachment to each recipient.
+              Election: <span className="font-semibold text-gray-900">{selectedElection?.name || 'Active election'}</span>.
+            </p>
+
+            {/* Recipient chips */}
+            {emailRecipients.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {emailRecipients.map((email) => (
+                  <span
+                    key={email}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 border border-primary-100 rounded-full text-xs font-medium text-primary-700"
+                  >
+                    {email}
+                    <button
+                      type="button"
+                      onClick={() => removeEmailRecipient(email)}
+                      className="text-primary-400 hover:text-primary-700"
+                    >
+                      <XMarkIcon className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Email input */}
+            <div>
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                Add recipient email
+              </label>
+              <div className="flex gap-2">
+                <input
+                  ref={emailInputRef}
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={handleEmailKeyDown}
+                  placeholder="name@example.com"
+                  className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={addEmailRecipient}
+                  disabled={!emailInput.trim()}
+                >
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Press Enter or comma to add. Up to 20 recipients.</p>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => setEmailModalOpen(false)}
+                disabled={emailSending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendReport}
+                loading={emailSending}
+                disabled={emailRecipients.length === 0 || emailSending}
+                icon={<EnvelopeIcon className="h-4 w-4" />}
+              >
+                Send Report
+              </Button>
+            </div>
+          </div>
+        </Modal>
       </div>
     </div>
   );

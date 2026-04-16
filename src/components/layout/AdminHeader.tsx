@@ -283,6 +283,15 @@ export default function AdminHeader({ title }: AdminHeaderProps) {
                       ))
                     )}
                   </div>
+                  {/* Footer: view all link */}
+                  <div className="border-t border-gray-100">
+                    <button
+                      onClick={() => { window.location.href = '/admin/notifications'; setNotifOpen(false); }}
+                      className="w-full px-4 py-2.5 text-xs font-semibold text-primary-600 hover:bg-primary-50 text-center transition-colors"
+                    >
+                      View all notifications
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

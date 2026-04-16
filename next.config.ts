@@ -39,7 +39,7 @@ const nextConfig: NextConfig = {
                 ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
                 : "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://unpkg.com",
-              "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
+              "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.public.blob.vercel-storage.com https://res.cloudinary.com",
               "font-src 'self'",
               "connect-src 'self'",
               "frame-ancestors 'none'",
@@ -52,7 +52,16 @@ const nextConfig: NextConfig = {
 
   // Image optimization config
   images: {
-    remotePatterns: [],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.public.blob.vercel-storage.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+    ],
   },
 };
 

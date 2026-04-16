@@ -10,6 +10,7 @@ import { encryptField, decryptField } from '@/lib/crypto';
 // Local schema for profile updates
 const profileUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  email: z.string().email('Invalid email address').max(200).optional(),
   phone: z.string().max(20).optional().nullable(),
   photo: z.string()
     .refine(
@@ -47,7 +48,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json();
     const data = parseData(body, profileUpdateSchema);
-    const { name, phone, currentPassword, newPassword } = data;
+    const { name, email: newEmail, phone, currentPassword, newPassword } = data;
 
     // Password change flow
     if (currentPassword && newPassword) {
@@ -83,6 +84,17 @@ export async function PUT(request: NextRequest) {
     // Profile update flow
     const updateData: Record<string, string | null> = {};
     if (name !== undefined) updateData.name = name;
+    if (newEmail !== undefined) {
+      // Check for duplicate email
+      const existing = await prisma.user.findFirst({
+        where: { email: newEmail, NOT: { id: user.id } },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ApiError(409, 'Email address is already in use');
+      }
+      updateData.email = newEmail;
+    }
     if (phone !== undefined) updateData.phone = encryptField(phone || null);
     if (data.photo !== undefined) updateData.photo = data.photo;
 

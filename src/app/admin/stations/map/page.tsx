@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { fetcher } from '@/lib/utils';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -30,21 +30,23 @@ interface ElectoralAreaData {
   boundaryGeoJson: string | null;
 }
 
-function getStationStatus(station: StationData): 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING' {
+type StatusKey = 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING';
+
+function getStationStatus(station: StationData): StatusKey {
   if (station.results.length > 0) return 'REPORTED';
   if (station.totalVoted > 0) return 'ACTIVE';
   if (!station.agent) return 'NO_AGENT';
   return 'PENDING';
 }
 
-function getMarkerColor(status: 'REPORTED' | 'ACTIVE' | 'NO_AGENT' | 'PENDING'): string {
-  switch (status) {
-    case 'REPORTED': return '#22c55e';   // green
-    case 'ACTIVE':   return '#3b82f6';   // blue
-    case 'NO_AGENT': return '#f97316';   // orange
-    case 'PENDING':  return '#9ca3af';   // gray
-  }
-}
+const STATUS_CONFIG: { key: StatusKey; color: string; label: string; note: string }[] = [
+  { key: 'REPORTED', color: '#16a34a', label: 'Reported', note: 'Results submitted' },
+  { key: 'ACTIVE',   color: '#2563eb', label: 'Active',   note: 'Turnout recorded' },
+  { key: 'NO_AGENT', color: '#ea580c', label: 'No Agent', note: 'Needs assignment' },
+  { key: 'PENDING',  color: '#64748b', label: 'Pending',  note: 'Quiet station' },
+];
+
+const ALL_STATUSES = new Set<StatusKey>(['REPORTED', 'ACTIVE', 'NO_AGENT', 'PENDING']);
 
 // Dynamically import the map component to avoid SSR issues
 const StationMapInner = dynamic(() => import('./StationMapInner'), { ssr: false });
@@ -53,6 +55,25 @@ export default function StationMapPage() {
   const { data: stations } = useSWR<StationData[]>('/api/stations', fetcher);
   const { data: areas } = useSWR<ElectoralAreaData[]>('/api/electoral-areas', fetcher);
 
+  const [showAreas, setShowAreas] = useState(true);
+  const [showClusters, setShowClusters] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<Set<StatusKey>>(new Set(ALL_STATUSES));
+
+  const toggleStatus = (key: StatusKey) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        if (next.size === 1) return prev; // always keep at least one
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const allSelected = statusFilter.size === ALL_STATUSES.size;
+
   const withCoords = (Array.isArray(stations) ? stations : []).filter(
     (s) => s.latitude !== null && s.longitude !== null
   );
@@ -60,48 +81,111 @@ export default function StationMapPage() {
     (s) => s.latitude === null || s.longitude === null
   );
 
+  // Counts for each status (among coord stations)
+  const statusCounts = withCoords.reduce<Record<string, number>>((acc, s) => {
+    const status = getStationStatus(s);
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div className="flex-1 flex flex-col">
       <AdminHeader title="Station Map" />
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 shrink-0">
+      <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 shrink-0">
         <Link
           href="/admin/stations"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors shrink-0"
         >
           <ArrowLeftIcon className="h-4 w-4" />
-          Back to Stations
+          Back
         </Link>
-        <div className="ml-2 flex flex-wrap items-center gap-2">
-          {[
-            { color: '#16a34a', label: 'Reported', note: 'Results submitted' },
-            { color: '#2563eb', label: 'Active', note: 'Turnout recorded' },
-            { color: '#ea580c', label: 'No Agent', note: 'Needs assignment' },
-            { color: '#64748b', label: 'Pending', note: 'Quiet station' },
-          ].map(({ color, label, note }) => (
-            <div key={label} className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5">
-              <div className="relative h-3 w-3 shrink-0">
-                <div className="absolute inset-0 rounded-full opacity-20" style={{ background: color }} />
-                <div className="absolute inset-[2px] rounded-full" style={{ background: color }} />
-              </div>
-              <div className="leading-none">
-                <p className="text-[11px] font-semibold text-gray-700">{label}</p>
-                <p className="text-[10px] text-gray-400">{note}</p>
-              </div>
-            </div>
-          ))}
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-200 shrink-0" />
+
+        {/* Layer toggles */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Layers</span>
+          <button
+            onClick={() => setShowAreas((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+              showAreas
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-gray-50 border-gray-200 text-gray-500'
+            }`}
+          >
+            <span className={`w-2.5 h-2.5 rounded-full border-2 ${showAreas ? 'border-blue-500 bg-blue-100' : 'border-gray-300'}`} />
+            Areas
+          </button>
+          <button
+            onClick={() => setShowClusters((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+              showClusters
+                ? 'bg-purple-50 border-purple-200 text-purple-700'
+                : 'bg-gray-50 border-gray-200 text-gray-500'
+            }`}
+          >
+            <span className={`w-2.5 h-2.5 rounded-full border-2 ${showClusters ? 'border-purple-500 bg-purple-100' : 'border-gray-300'}`} />
+            Cluster
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-6 bg-gray-200 shrink-0" />
+
+        {/* Status filters */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 shrink-0">Filter</span>
+          <button
+            onClick={() => setStatusFilter(new Set(ALL_STATUSES))}
+            className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+              allSelected
+                ? 'bg-gray-800 border-gray-800 text-white'
+                : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+            }`}
+          >
+            All
+          </button>
+          {STATUS_CONFIG.map(({ key, color, label }) => {
+            const active = statusFilter.has(key);
+            const count = statusCounts[key] ?? 0;
+            return (
+              <button
+                key={key}
+                onClick={() => toggleStatus(key)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                  active
+                    ? 'border-transparent text-white'
+                    : 'bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100'
+                }`}
+                style={active ? { backgroundColor: color, borderColor: color } : {}}
+              >
+                {label}
+                <span className={`rounded-full px-1 text-[10px] font-bold ${active ? 'bg-white/25' : 'bg-gray-200 text-gray-500'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex overflow-hidden" style={{ height: 'calc(100vh - 112px)' }}>
+      <div className="flex overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
         {/* Map Area */}
         <div className="flex-1 relative">
           {stations ? (
-            <StationMapInner stations={withCoords} areas={Array.isArray(areas) ? areas : []} />
+            <StationMapInner
+              stations={withCoords}
+              areas={Array.isArray(areas) ? areas : []}
+              showAreas={showAreas}
+              showClusters={showClusters}
+              statusFilter={statusFilter}
+            />
           ) : (
             <div className="h-full flex items-center justify-center bg-gray-100">
-              <p className="text-gray-500 text-sm">Loading map...</p>
+              <p className="text-gray-500 text-sm">Loading map…</p>
             </div>
           )}
         </div>
@@ -145,8 +229,7 @@ export default function StationMapPage() {
                       <Badge
                         variant={
                           status === 'REPORTED' ? 'success' :
-                          status === 'ACTIVE' ? 'info' :
-                          status === 'NO_AGENT' ? 'warning' : 'warning'
+                          status === 'ACTIVE' ? 'info' : 'warning'
                         }
                         size="sm"
                       >

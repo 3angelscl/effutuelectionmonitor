@@ -4,6 +4,7 @@ import { requireAuth, requireRole, apiHandler } from '@/lib/api-auth';
 import { parseBody, resultSubmitSchema } from '@/lib/validations';
 import { submitResults } from '@/services/election-results';
 import { sendResultsSubmittedEmail } from '@/lib/email';
+import { notifyAdmins } from '@/lib/notify';
 
 export const GET = apiHandler(async (request: Request) => {
   await requireAuth();
@@ -45,7 +46,19 @@ export const POST = apiHandler(async (request: Request) => {
     user,
   });
 
-  // Fire-and-forget email to all ADMIN users (never blocks the HTTP response)
+  // Fire-and-forget: in-app notification + push + email to all ADMIN users
+  notifyAdmins({
+    type: 'RESULT_SUBMITTED',
+    title: `Results submitted — ${outcome.stationCode}`,
+    message: `${user.name} submitted ${data.resultType} results (${outcome.totalVotes.toLocaleString()} votes)`,
+    link: '/admin/results',
+    push: {
+      title: `Results: ${outcome.stationCode}`,
+      body: `${user.name} submitted ${data.resultType.toLowerCase()} results`,
+      url: '/admin/results',
+    },
+  }).catch(() => {});
+
   Promise.all([
     prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } }),
     prisma.pollingStation.findUnique({ where: { id: data.stationId }, select: { name: true } }),

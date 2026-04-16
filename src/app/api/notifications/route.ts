@@ -2,21 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuth();
+    const { searchParams } = new URL(request.url);
+    const typeFilter = searchParams.get('type') || '';
+    const limitParam = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.min(200, Math.max(1, Number.isNaN(limitParam) ? 50 : limitParam));
 
-    const userId = user.id;
+    const where: Record<string, unknown> = { userId: user.id };
+    if (typeFilter) where.type = typeFilter;
 
-    const notifications = await prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    });
-
-    const unreadCount = await prisma.notification.count({
-      where: { userId, isRead: false },
-    });
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+      prisma.notification.count({
+        where: { userId: user.id, isRead: false },
+      }),
+    ]);
 
     return NextResponse.json({ notifications, unreadCount });
   } catch (error) {
@@ -30,19 +36,16 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const { user } = await requireAuth();
-
-    const userId = user.id;
     const body = await request.json();
-    const { notificationId, markAll } = body;
+    const { notificationId, markAll, type } = body;
 
     if (markAll) {
-      await prisma.notification.updateMany({
-        where: { userId, isRead: false },
-        data: { isRead: true },
-      });
+      const where: Record<string, unknown> = { userId: user.id, isRead: false };
+      if (type) where.type = type;
+      await prisma.notification.updateMany({ where, data: { isRead: true } });
     } else if (notificationId) {
       await prisma.notification.updateMany({
-        where: { id: notificationId, userId },
+        where: { id: notificationId, userId: user.id },
         data: { isRead: true },
       });
     }

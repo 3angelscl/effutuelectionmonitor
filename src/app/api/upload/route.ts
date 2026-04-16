@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/api-auth';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { storeFile } from '@/lib/file-storage';
 
 // SVG and PDF are intentionally excluded — SVG can embed JavaScript; PDF can contain
 // active content. Both would be served from a public URL with no auth check.
@@ -40,8 +39,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No valid file uploaded' }, { status: 400 });
     }
 
-    // Cast to standard File
-    const actualFile = file as any;
+    const actualFile = file as File;
     
     // Validate file size
     if (actualFile.size > MAX_FILE_SIZE) {
@@ -72,19 +70,13 @@ export async function POST(request: NextRequest) {
 
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const filename = `${uniqueSuffix}${extension}`;
-    
-    const uploadDir = join(process.cwd(), 'public', 'uploads');
-    
-    try {
-      await mkdir(uploadDir, { recursive: true });
-    } catch (err) {
-      // ignore
-    }
+    const url = await storeFile({
+      filename,
+      buffer,
+      contentType: actualFile.type || undefined,
+    });
 
-    const filepath = join(uploadDir, filename);
-    await writeFile(filepath, buffer);
-
-    return NextResponse.json({ url: `/uploads/${filename}` });
+    return NextResponse.json({ url });
   } catch (error) {
     console.error('File upload error:', error);
     return NextResponse.json({ error: 'Upload failed' }, { status: 500 });

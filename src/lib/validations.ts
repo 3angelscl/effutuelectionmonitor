@@ -130,6 +130,20 @@ export const resetRequestSchema = z.object({
   email: z.string().email('Valid email required'),
 });
 
+export const twoFactorActionSchema = z.object({
+  action: z.enum(['verify-login', 'enable', 'disable']),
+  code: z.string().min(1, 'Verification code required'),
+  email: z.string().email('Valid email required').optional(),
+}).superRefine((data, ctx) => {
+  if (data.action === 'verify-login' && !data.email) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['email'],
+      message: 'Email is required for login verification',
+    });
+  }
+});
+
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Token required'),
   password: z.string()
@@ -350,14 +364,15 @@ export const checkinSchema = z.object({
 // ─── Turnout Schema ─────────────────────────────────────────
 
 export const turnoutMarkSchema = z.object({
-  voterId: z.string().min(1, 'Voter ID required'),
+  voterId: z.string().regex(/^\d{10}$/, 'Voter ID must be exactly 10 digits'),
   hasVoted: z.boolean(),
+  stationId: z.string().uuid('Valid station ID required').optional(),
 });
 
 // ─── Voter Schemas ──────────────────────────────────────────
 
 export const voterCreateSchema = z.object({
-  voterId: z.string().min(1, 'Voter ID is required').max(50).transform((s) => sanitizeText(s)),
+  voterId: z.string().regex(/^\d{10}$/, 'Voter ID must be exactly 10 digits').transform((s) => sanitizeText(s)),
   firstName: z.string().min(1, 'First name is required').max(100).transform((s) => sanitizeText(s)),
   lastName: z.string().min(1, 'Last name is required').max(100).transform((s) => sanitizeText(s)),
   age: z.coerce.number().int().min(18, 'Must be at least 18').max(150),
@@ -368,7 +383,7 @@ export const voterCreateSchema = z.object({
 
 export const voterUpdateSchema = z.object({
   id: z.string().uuid('Valid ID required'),
-  voterId: z.string().min(1).max(50).transform((s) => sanitizeText(s)).optional(),
+  voterId: z.string().regex(/^\d{10}$/, 'Voter ID must be exactly 10 digits').transform((s) => sanitizeText(s)).optional(),
   firstName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
   lastName: z.string().min(1).max(100).transform((s) => sanitizeText(s)).optional(),
   age: z.coerce.number().int().min(18).max(150).optional(),
