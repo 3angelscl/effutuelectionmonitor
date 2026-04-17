@@ -20,8 +20,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { classNames } from '@/lib/utils';
 import AgentHeader from '@/components/layout/AgentHeader';
-import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
-import InstallPrompt from '@/components/InstallPrompt';
 import IdleTimeout from '@/components/IdleTimeout';
 import { useEventStream } from '@/hooks/useEventStream';
 
@@ -237,8 +235,6 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         </div>
       </nav>
 
-      <ServiceWorkerRegistration />
-      <InstallPrompt />
       <IdleTimeout />
     </div>
   );

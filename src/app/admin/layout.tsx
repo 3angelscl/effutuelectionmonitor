@@ -11,7 +11,6 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import AdminSidebar from '@/components/layout/AdminSidebar';
-import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration';
 import IdleTimeout from '@/components/IdleTimeout';
 import { useEventStream } from '@/hooks/useEventStream';
 import { AdminSidebarContext } from '@/contexts/AdminSidebarContext';
@@ -117,7 +116,6 @@ export default function AdminLayout({
           </div>
         </nav>
 
-        <ServiceWorkerRegistration />
         <IdleTimeout />
       </div>
     </AdminSidebarContext.Provider>
