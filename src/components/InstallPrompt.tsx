@@ -30,7 +30,18 @@ export default function InstallPrompt() {
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+
+    const handleInstalled = () => {
+      setVisible(false);
+      setDeferredPrompt(null);
+      localStorage.removeItem(DISMISSED_KEY);
+    };
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
   }, []);
 
   const handleInstall = useCallback(async () => {
