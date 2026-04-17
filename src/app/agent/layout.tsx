@@ -20,6 +20,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { classNames } from '@/lib/utils';
 import AgentHeader from '@/components/layout/AgentHeader';
+import PushSubscribeButton from '@/components/PushSubscribeButton';
 import IdleTimeout from '@/components/IdleTimeout';
 import { useEventStream } from '@/hooks/useEventStream';
 
@@ -198,8 +199,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
             <Image src="/uploads/logo.jpg" alt="Logo" width={28} height={28} className="rounded object-cover w-7 h-7" />
             <span className="text-sm font-bold text-gray-900">Field Portal</span>
           </Link>
-          {/* Spacer to balance the hamburger */}
-          <div className="w-10" />
+          <div className="flex w-10 justify-end">
+            <PushSubscribeButton />
+          </div>
         </div>
 
         {/* Desktop header */}
