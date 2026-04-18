@@ -217,7 +217,7 @@ export default function LoginPage() {
 
       {/* Footer */}
       <div className="mt-6 flex items-center gap-6 text-xs text-white/80 relative z-10">
-        <span>&copy; 2026 Conadu Solutions</span>
+        <span>&copy; 2026. Powered by Conadu Solutions</span>
 
       </div>
     </div>
