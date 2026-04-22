@@ -87,6 +87,7 @@ export const authOptions: NextAuthOptions = {
           name: updatedUser.name,
           role: updatedUser.role,
           photo: updatedUser.photo,
+          sessionVersion: updatedUser.sessionVersion,
         };
       },
     }),
@@ -95,14 +96,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as unknown as { role: string }).role;
-        token.photo = (user as unknown as { photo: string | null }).photo;
-        // Store sessionVersion at sign-in so we can detect forced invalidations
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { sessionVersion: true },
-        });
-        token.sessionVersion = dbUser?.sessionVersion ?? 1;
+        token.role = (user as any).role;
+        token.photo = (user as any).photo;
+        token.sessionVersion = (user as any).sessionVersion ?? 1;
       }
 
       // On every token refresh, verify the session hasn't been force-invalidated

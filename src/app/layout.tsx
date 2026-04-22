@@ -42,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="h-full flex flex-col font-sans" suppressHydrationWarning>
-        <SessionProvider>
+        <SessionProvider refetchInterval={60} refetchOnWindowFocus={true}>
           <SessionGuard />
           {children}
         </SessionProvider>
