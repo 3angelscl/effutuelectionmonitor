@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
       'Last Name': v.lastName,
       'Age': v.age,
       'Gender': v.gender || '',
+      'Photo URL': v.photo || '',
       'PS Code': v.pollingStation?.psCode,
       'Station Name': v.pollingStation.name,
       'Electoral Area': v.pollingStation.electoralArea || '',
