@@ -75,12 +75,18 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
+        // Increment sessionVersion to enforce one-device-at-a-time (invalidates previous JWTs)
+        const updatedUser = await prisma.user.update({
+          where: { id: user.id },
+          data: { sessionVersion: { increment: 1 } },
+        });
+
         return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          photo: user.photo,
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          role: updatedUser.role,
+          photo: updatedUser.photo,
         };
       },
     }),
