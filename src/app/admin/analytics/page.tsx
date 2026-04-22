@@ -440,17 +440,15 @@ export default function AnalyticsPage() {
                               style={{ width: `${area.turnoutPct}%` }}
                             />
                           </div>
-                          <span className="text-xs font-semibold text-gray-800 w-10 text-right shrink-0">
+                          <span className="text-xs font-semibold text-gray-800 w-32 text-right shrink-0">
                             {area.turnoutPct}%
+                            <span className="ml-1 text-[10px] font-normal text-gray-500">
+                              ({area.votedVoters.toLocaleString()} / {area.registeredVoters.toLocaleString()})
+                            </span>
                           </span>
-                          <div className="flex flex-col items-end w-28 shrink-0">
-                            <span className="text-[10px] font-medium text-gray-700">
-                              {area.votedVoters.toLocaleString()} / {area.registeredVoters.toLocaleString()}
-                            </span>
-                            <span className="text-[9px] text-gray-400">
-                              {area.stationsReporting}/{area.stationCount} stns
-                            </span>
-                          </div>
+                          <span className="text-[10px] text-gray-400 w-16 shrink-0 text-right">
+                            {area.stationsReporting}/{area.stationCount} stns
+                          </span>
                         </div>
                       ))}
                   </div>
