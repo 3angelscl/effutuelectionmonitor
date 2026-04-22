@@ -11,7 +11,11 @@ export default function SessionGuard() {
   const { data: session } = useSession();
 
   useEffect(() => {
+    if (session) {
+      console.log('Session state:', (session as any).error ? 'Invalidated' : 'Active');
+    }
     if (session && (session as any).error === 'SessionInvalidated') {
+      console.warn('Session mismatch detected! Logging out...');
       signOut({ callbackUrl: '/login?message=loggedout' });
     }
   }, [session]);
