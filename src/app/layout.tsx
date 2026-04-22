@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import SessionProvider from "@/components/SessionProvider";
+import SessionGuard from "@/components/SessionGuard";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import InstallPrompt from "@/components/InstallPrompt";
 import { Toaster } from "sonner";
@@ -41,7 +42,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="h-full flex flex-col font-sans" suppressHydrationWarning>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <SessionGuard />
+          {children}
+        </SessionProvider>
         <ServiceWorkerRegistration />
         <InstallPrompt />
         <Toaster position="top-right" richColors closeButton duration={4000} />
