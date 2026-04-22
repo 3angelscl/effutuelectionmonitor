@@ -121,7 +121,7 @@ export const authOptions: NextAuthOptions = {
           dbUser.deletedAt !== null ||
           (dbUser.sessionVersion ?? 1) !== tokenVersion
         ) {
-          return {}; // Empty token forces sign-out on next request
+          return { error: 'SessionInvalidated' };
         }
       }
 
@@ -133,6 +133,9 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      if (token.error) {
+        (session as any).error = token.error;
+      }
       if (session.user) {
         (session.user as { id: string; role: string; photo?: string | null }).id = token.id as string;
         (session.user as { id: string; role: string; photo?: string | null }).role = token.role as string;

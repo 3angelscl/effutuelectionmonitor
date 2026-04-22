@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ShieldCheckIcon,
   UserIcon,
@@ -11,6 +11,7 @@ import {
   EyeSlashIcon,
   CheckBadgeIcon,
   ArrowRightIcon,
+  SignalIcon,
 } from '@heroicons/react/24/outline';
 import ParticlesOverlay from '@/components/ui/ParticlesOverlay';
 
@@ -20,10 +21,25 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [needs2FA, setNeeds2FA] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message === 'loggedout') {
+      setNotice('You have been logged out because your account was signed in on another device.');
+    }
+    
+    // Clear the error query param from URL after showing it
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'SessionRequired') {
+      // Standard NextAuth error when trying to access protected page without session
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +99,13 @@ export default function LoginPage() {
         <p className="text-gray-500 text-sm mb-8">
           Effutu Dream Election Monitoring Portal
         </p>
+
+        {notice && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-sm flex items-start gap-2">
+            <SignalIcon className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{notice}</span>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
