@@ -40,8 +40,8 @@ async function readCsvFile(file: File): Promise<Record<string, unknown>[]> {
 }
 
 async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
 
   // Validate magic bytes before passing to the parser.
   // XLSX is a ZIP (50 4B 03 04). We do not support legacy XLS files.
@@ -59,8 +59,15 @@ async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
   const headerRow = sheet.getRow(1);
   const headers: string[] = [];
   headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headers[colNumber] = String(cell.value ?? '').trim();
+    const val = String(cell.value ?? '').trim();
+    if (val) {
+      headers[colNumber] = val;
+    }
   });
+
+  // Filter out any potential sparse entries (though eachCell should be fine)
+  // and keep a clean list of unique keys
+  const validHeaders = headers.filter(h => !!h);
 
   const rows: Record<string, unknown>[] = [];
 
@@ -79,8 +86,8 @@ async function readExcelFile(file: File): Promise<Record<string, unknown>[]> {
     });
 
     // Fill in missing columns with empty strings
-    for (const h of headers) {
-      if (h && !(h in obj)) obj[h] = '';
+    for (const h of validHeaders) {
+      if (!(h in obj)) obj[h] = '';
     }
 
     if (hasValue) rows.push(obj);

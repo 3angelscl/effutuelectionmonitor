@@ -5,6 +5,7 @@ import { verifySync } from 'otplib';
 import prisma from './prisma';
 import { createRateLimiter } from './rate-limit';
 import { decrypt } from './crypto';
+import { logger } from './logger';
 
 const authLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 10 });
 
@@ -30,6 +31,7 @@ export const authOptions: NextAuthOptions = {
 
         const { success } = await authLimiter.check(normalizedEmail);
         if (!success) {
+          logger.warn('Login rate limit exceeded', { email: normalizedEmail });
           throw new Error('Too many login attempts. Try again in 15 minutes.');
         }
 
@@ -39,6 +41,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) {
+          logger.warn('Login failed: user not found or deleted', { email: normalizedEmail });
           throw new Error('Invalid email or password');
         }
 
@@ -48,6 +51,7 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isValidPassword) {
+          logger.warn('Login failed: invalid password', { email: normalizedEmail, userId: user.id });
           throw new Error('Invalid email or password');
         }
 
@@ -66,6 +70,7 @@ export const authOptions: NextAuthOptions = {
           });
           const isValid = result.valid;
           if (!isValid) {
+            logger.warn('Login failed: invalid 2FA code', { email: normalizedEmail, userId: user.id });
             throw new Error('Invalid 2FA code');
           }
         }
@@ -96,6 +101,8 @@ export const authOptions: NextAuthOptions = {
 
       // On every token refresh, verify the session hasn't been force-invalidated
       // (e.g. password change, soft-delete, or admin bump of sessionVersion)
+      // TODO: This hits the DB on every refresh. Consider caching sessionVersion in Redis
+      // to improve performance under high concurrent load.
       if (!user && token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },

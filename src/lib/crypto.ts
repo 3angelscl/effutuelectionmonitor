@@ -15,9 +15,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { logger } from './logger';
 
 const ALGORITHM = 'aes-256-gcm';
-const IV_BYTES = 16;
+const IV_BYTES = 12; // Standard for AES-GCM
+const LEGACY_IV_BYTES = 16;
 const TAG_BYTES = 16;
+
 const IV_B64_LEN = Math.ceil(IV_BYTES / 3) * 4;
+const LEGACY_IV_B64_LEN = Math.ceil(LEGACY_IV_BYTES / 3) * 4;
 const TAG_B64_LEN = Math.ceil(TAG_BYTES / 3) * 4;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const PLACEHOLDER_KEY_RE = /^<64-char hex/i;
@@ -27,7 +30,11 @@ function looksLikeCiphertext(value: string): boolean {
   const parts = value.split(':');
   if (parts.length !== 3) return false;
   const [iv, tag, body] = parts;
-  if (iv.length !== IV_B64_LEN || tag.length !== TAG_B64_LEN) return false;
+  
+  // Accept both standard (12-byte) and legacy (16-byte) IV lengths
+  const isValidIvLen = iv.length === IV_B64_LEN || iv.length === LEGACY_IV_B64_LEN;
+  if (!isValidIvLen || tag.length !== TAG_B64_LEN) return false;
+  
   if (body.length === 0) return false;
   return BASE64_RE.test(iv) && BASE64_RE.test(tag) && BASE64_RE.test(body);
 }
@@ -64,7 +71,7 @@ function decryptWithKey(value: string, key: Buffer): string {
   const tag = Buffer.from(tagB64, 'base64');
   const body = Buffer.from(bodyB64, 'base64');
 
-  if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+  if ((iv.length !== IV_BYTES && iv.length !== LEGACY_IV_BYTES) || tag.length !== TAG_BYTES) {
     throw new Error('Invalid ciphertext envelope');
   }
 

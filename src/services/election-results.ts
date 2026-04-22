@@ -51,33 +51,36 @@ export interface SubmitResultsOutput {
 export async function submitResults(input: SubmitResultsInput): Promise<SubmitResultsOutput> {
   const { stationId, results, resultType, adminOverride, user } = input;
 
-  const station = await prisma.pollingStation.findUnique({ where: { id: stationId } });
-  if (!station) throw new ApiError(404, 'Polling station not found');
-
-  if (user.role === 'AGENT' && station.agentId !== user.id) {
-    throw new ApiError(403, 'Not authorized for this polling station');
-  }
-
-  if (user.role === 'AGENT') {
-    const latestCheckIn = await prisma.agentCheckIn.findFirst({
-      where: {
-        userId: user.id,
-        stationId,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!latestCheckIn || latestCheckIn.type !== 'CHECK_IN') {
-      throw new ApiError(403, 'You must check in at your polling station before submitting results');
-    }
-  }
-
-  const activeElection = await prisma.election.findFirst({ where: { isActive: true } });
-  if (!activeElection) throw new ApiError(400, 'No active election');
-
   const totalSubmittedVotes = results.reduce((sum, r) => sum + r.votes, 0);
+  let station: any;
+  let activeElection: any;
   let registeredVotersCount = 0;
 
   await prisma.$transaction(async (tx) => {
+    // Lookups must happen inside the transaction to prevent TOCTOU races
+    station = await tx.pollingStation.findUnique({ where: { id: stationId } });
+    if (!station) throw new ApiError(404, 'Polling station not found');
+
+    if (user.role === 'AGENT' && station.agentId !== user.id) {
+      throw new ApiError(403, 'Not authorized for this polling station');
+    }
+
+    if (user.role === 'AGENT') {
+      const latestCheckIn = await tx.agentCheckIn.findFirst({
+        where: {
+          userId: user.id,
+          stationId,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!latestCheckIn || latestCheckIn.type !== 'CHECK_IN') {
+        throw new ApiError(403, 'You must check in at your polling station before submitting results');
+      }
+    }
+
+    activeElection = await tx.election.findFirst({ where: { isActive: true } });
+    if (!activeElection) throw new ApiError(400, 'No active election');
+
     registeredVotersCount = await tx.voter.count({
       where: { stationId, deletedAt: null },
     });
