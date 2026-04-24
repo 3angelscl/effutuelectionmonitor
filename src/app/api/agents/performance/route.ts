@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRole, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { decryptField } from '@/lib/crypto';
 
 export async function GET() {
   try {
@@ -104,7 +105,7 @@ export async function GET() {
         id: agent.id,
         name: agent.name,
         email: agent.email,
-        phone: agent.phone,
+        phone: decryptField(agent.phone),
         photo: agent.photo,
         station: agent.assignedStations[0] || null,
         isCheckedIn,
