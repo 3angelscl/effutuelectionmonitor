@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, ApiError } from '@/lib/api-auth';
 import prisma from '@/lib/prisma';
+import { decryptField } from '@/lib/crypto';
 
 export async function GET(
   request: NextRequest,
@@ -102,7 +103,10 @@ export async function GET(
         latitude: station.latitude,
         longitude: station.longitude,
       },
-      agent: station.agent,
+      agent: station.agent ? {
+        ...station.agent,
+        phone: decryptField(station.agent.phone)
+      } : null,
       stats: {
         totalRegistered: totalVoters,
         totalVoted,

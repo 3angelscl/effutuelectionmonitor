@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { decryptField } from '@/lib/crypto';
 import { logAudit } from '@/lib/audit';
 import { requireAuth, requireRole, apiHandler } from '@/lib/api-auth';
 import { invalidateLiveSummary } from '@/lib/live-summary';
@@ -72,7 +73,10 @@ export const GET = apiHandler(async (request: Request) => {
       latitude: station.latitude,
       longitude: station.longitude,
       agentId: station.agentId,
-      agent: station.agent,
+      agent: station.agent ? {
+        ...station.agent,
+        phone: decryptField(station.agent.phone)
+      } : null,
       totalRegistered,
       totalVoted,
       turnoutPercentage: totalRegistered > 0
